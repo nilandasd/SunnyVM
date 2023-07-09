@@ -22,4 +22,5 @@ mod function;
 mod list;
 
 mod bytecode;
+mod thread;
 mod vm;
