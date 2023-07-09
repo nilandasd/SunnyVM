@@ -78,8 +78,8 @@ pub struct Upvalue {
 }
 
 impl Upvalue {
-    /// Allocate a new Upvalue on the heap. The absolute stack index of the object must be
-    /// provided.
+    // Allocate a new Upvalue on the heap. The absolute stack index of the object must be
+    // provided.
     fn alloc<'guard>(
         mem: &'guard MutatorView,
         location: ArraySize,
@@ -117,7 +117,6 @@ impl Upvalue {
         Ok(())
     }
 
-    /// Close the upvalue, copying the stack variable value into the Upvalue
     fn close<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -155,18 +154,11 @@ fn env_upvalue_lookup<'guard>(
 /// register stack, call frames, closure upvalues, thread-local global associations and the current
 /// instruction pointer.
 pub struct Thread {
-    /// An array of CallFrames
     frames: CellPtr<CallFrameList>,
-    /// An array of pointers any object type
     stack: CellPtr<List>,
-    /// The current stack base pointer
     stack_base: Cell<ArraySize>,
-    /// A dict that should only contain Number keys and Upvalue values. This is a mapping of
-    /// absolute stack indeces to Upvalue objects where stack values are closed over.
     upvalues: CellPtr<Dict>,
-    /// A dict that should only contain Symbol keys but any type as values
     globals: CellPtr<Dict>,
-    /// The current instruction location
     instr: CellPtr<InstructionStream>,
 }
 
@@ -393,14 +385,6 @@ impl Thread {
 
                 // Call the function referred to by the `function` register, put the result in the
                 // `dest` register.
-                //
-                // The function can be a Function object or a Partial.
-                //
-                // If the arg_count is less than the function arity, return a Partial instead of
-                // entering the function.
-                //
-                // If the arg_count is equal to the Function or Partial arity, enter the Function
-                // object code.
                 Opcode::Call {
                     function,
                     dest,
@@ -439,13 +423,10 @@ impl Thread {
                         Ok(())
                     };
 
-                    // Handle the two similar-but-different cases: this might be a Function object
-                    // or a Partial application object
                     match *binding {
                         Value::Function(function) => {
                             let arity = function.arity();
-                            if arg_count > arity {
-                                // Too many args, we haven't got a continuations stack (yet)
+                            if arg_count != arity {
                                 return Err(err_eval(&format!(
                                     "Function {} expected {} arguments, got {}",
                                     binding,
