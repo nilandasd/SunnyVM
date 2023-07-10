@@ -14,7 +14,7 @@ use crate::printer::Print;
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
 use crate::symbol::Symbol;
 use crate::text::Text;
-use crate::vm::Upvalue;
+use crate::upvalue::Upvalue;
 
 #[derive(Copy, Clone)]
 pub enum Value<'guard> {

@@ -13,7 +13,9 @@ use crate::ptr_ops::{AsNonNull, Tagged};
 use crate::symbol::Symbol;
 use crate::tagged_ptr::FatPtr;
 use crate::text::Text;
-use crate::vm::{CallFrameList, Thread, Upvalue};
+use crate::thread::Thread;
+use crate::callframe::CallFrameList;
+use crate::upvalue::Upvalue;
 
 /// Recognized heap-allocated types.
 /// This should represent every type native to the runtime with the exception of tagged pointer inline value

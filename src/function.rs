@@ -11,11 +11,8 @@ use crate::printer::Print;
 use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
 use crate::tagged_ptr::Value;
 
-/// A function object type
-// ANCHOR: DefFunction
 #[derive(Clone)]
 pub struct Function {
-    /// name could be a Symbol, or nil if it is an anonymous fn
     name: TaggedCellPtr,
     /// Number of arguments required to activate the function
     arity: u8,
@@ -103,7 +100,6 @@ impl Function {
 }
 
 impl Print for Function {
-    /// Prints a string representation of the function
     fn print<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -118,12 +114,11 @@ impl Print for Function {
         });
 
         match *name {
-            Value::Symbol(s) => write!(f, "(Function {} ({}))", s.as_str(guard), param_string),
-            _ => write!(f, "(Function ({}))", param_string),
+            Value::Symbol(s) => write!(f, "Function {} ({})", s.as_str(guard), param_string),
+            _ => write!(f, "Function ({})", param_string),
         }
     }
 
-    /// Prints the disassembled bytecode
     fn debug<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,

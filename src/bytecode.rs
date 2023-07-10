@@ -123,12 +123,7 @@ pub enum Opcode {
     },
 }
 
-/// Bytecode is stored as fixed-width 32-bit values.
-/// This is not the most efficient format but it is easy to work with.
 pub type ArrayOpcode = Array<Opcode>;
-
-// Literals are stored in a separate list of machine-word-width pointers.
-// This is also not the most efficient scheme but it is easy to work with.
 pub type Literals = List;
 
 #[derive(Clone)]
@@ -236,7 +231,6 @@ impl InstructionStream {
         })
     }
 
-    // Change to a different stack frame, either as a function call or a return
     pub fn switch_frame(&self, code: ScopedPtr<'_, ByteCode>, ip: ArraySize) {
         self.instructions.set(code);
         self.ip.set(ip);

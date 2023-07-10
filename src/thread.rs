@@ -1,9 +1,9 @@
 use std::cell::Cell;
 
-use crate::array::{Array, ArraySize};
+use crate::array::ArraySize;
 use crate::bytecode::{ByteCode, InstructionStream, Opcode};
 use crate::container::{
-    Container, FillAnyContainer, HashIndexedAnyContainer, IndexedAnyContainer, IndexedContainer,
+    Container, FillAnyContainer, HashIndexedAnyContainer, IndexedContainer,
     SliceableContainer, StackAnyContainer, StackContainer,
 };
 use crate::dict::Dict;
@@ -11,8 +11,10 @@ use crate::error::{err_eval, RuntimeError};
 use crate::function::{Function, Closure};
 use crate::list::List;
 use crate::memory::MutatorView;
-use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
+use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr};
 use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::upvalue::{Upvalue, env_upvalue_lookup};
+use crate::callframe::{CallFrame, CallFrameList};
 
 pub const RETURN_REG: usize = 0;
 pub const ENV_REG: usize = 1;
@@ -24,135 +26,6 @@ pub enum EvalStatus<'guard> {
     Return(TaggedScopedPtr<'guard>),
 }
 
-#[derive(Clone)]
-pub struct CallFrame {
-    function: CellPtr<Function>,
-    ip: Cell<ArraySize>,
-    base: ArraySize,
-}
-
-impl CallFrame {
-    pub fn new_main<'guard>(main_fn: ScopedPtr<'guard, Function>) -> CallFrame {
-        CallFrame {
-            function: CellPtr::new_with(main_fn),
-            ip: Cell::new(0),
-            base: 0,
-        }
-    }
-
-    /// Instantiate a new stack frame for the given function, beginning execution at the given
-    /// instruction pointer and a register window at `base`
-    fn new<'guard>(
-        function: ScopedPtr<'guard, Function>,
-        ip: ArraySize,
-        base: ArraySize,
-    ) -> CallFrame {
-        CallFrame {
-            function: CellPtr::new_with(function),
-            ip: Cell::new(ip),
-            base,
-        }
-    }
-
-    /// Return a string representation of this stack frame
-    fn as_string<'guard>(&self, guard: &'guard dyn MutatorScope) -> String {
-        let function = self.function.get(guard);
-        format!("in {}", function)
-    }
-}
-
-pub type CallFrameList = Array<CallFrame>;
-
-/// A closure upvalue as generally described by Lua 5.1 implementation.
-/// There is one main difference - in the Lua (and Crafting Interpreters) documentation, an upvalue
-/// is closed by pointing the `location` pointer at the `closed` pointer directly in the struct.
-/// This isn't a good idea _here_ because a stack location may be invalidated by the stack List
-/// object being reallocated. This VM doesn't support pointers into objects.
-#[derive(Clone)]
-pub struct Upvalue {
-    // Upvalue location can't be a pointer because it would be a pointer into the dynamically
-    // alloocated stack List - the pointer would be invalidated if the stack gets reallocated.
-    value: TaggedCellPtr,
-    closed: Cell<bool>,
-    location: ArraySize,
-}
-
-impl Upvalue {
-    // Allocate a new Upvalue on the heap. The absolute stack index of the object must be
-    // provided.
-    fn alloc<'guard>(
-        mem: &'guard MutatorView,
-        location: ArraySize,
-    ) -> Result<ScopedPtr<'guard, Upvalue>, RuntimeError> {
-        mem.alloc(Upvalue {
-            value: TaggedCellPtr::new_nil(),
-            closed: Cell::new(false),
-            location,
-        })
-    }
-
-    fn get<'guard>(
-        &self,
-        guard: &'guard dyn MutatorScope,
-        stack: ScopedPtr<'guard, List>,
-    ) -> Result<TaggedPtr, RuntimeError> {
-        match self.closed.get() {
-            true => Ok(self.value.get_ptr()),
-            false => Ok(IndexedContainer::get(&*stack, guard, self.location)?.get_ptr()),
-        }
-    }
-
-    fn set<'guard>(
-        &self,
-        guard: &'guard dyn MutatorScope,
-        stack: ScopedPtr<'guard, List>,
-        ptr: TaggedPtr,
-    ) -> Result<(), RuntimeError> {
-        match self.closed.get() {
-            true => self.value.set_to_ptr(ptr),
-            false => {
-                IndexedContainer::set(&*stack, guard, self.location, TaggedCellPtr::new_ptr(ptr))?
-            }
-        };
-        Ok(())
-    }
-
-    fn close<'guard>(
-        &self,
-        guard: &'guard dyn MutatorScope,
-        stack: ScopedPtr<'guard, List>,
-    ) -> Result<(), RuntimeError> {
-        let ptr = IndexedContainer::get(&*stack, guard, self.location)?.get_ptr();
-        self.value.set_to_ptr(ptr);
-        self.closed.set(true);
-        Ok(())
-    }
-}
-
-/// Get the Upvalue for the index into the given closure environment.
-/// Function will panic if types are not as expected.
-fn env_upvalue_lookup<'guard>(
-    guard: &'guard dyn MutatorScope,
-    closure_env: TaggedScopedPtr<'guard>,
-    upvalue_id: u8,
-) -> Result<ScopedPtr<'guard, Upvalue>, RuntimeError> {
-    match *closure_env {
-        Value::List(env) => {
-            let upvalue_ptr = IndexedAnyContainer::get(&*env, guard, upvalue_id as ArraySize)?;
-
-            match *upvalue_ptr {
-                Value::Upvalue(upvalue) => Ok(upvalue),
-                _ => unreachable!(),
-            }
-        }
-        _ => unreachable!(),
-    }
-}
-
-/// An execution Thread object.
-/// It is composed of all the data structures required for execution of a bytecode stream -
-/// register stack, call frames, closure upvalues, thread-local global associations and the current
-/// instruction pointer.
 pub struct Thread {
     frames: CellPtr<CallFrameList>,
     stack: CellPtr<List>,
@@ -166,20 +39,15 @@ impl Thread {
     pub fn alloc<'guard>(
         mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, Thread>, RuntimeError> {
-        // create an empty stack frame array
         let frames = CallFrameList::alloc_with_capacity(mem, 16)?;
 
-        // create a minimal value stack
         let stack = List::alloc_with_capacity(mem, 256)?;
         stack.fill(mem, 256, mem.nil())?;
 
-        // create an empty upvalue stack->heap mapping
         let upvalues = Dict::alloc(mem)?;
 
-        // create an empty globals dict
         let globals = Dict::alloc(mem)?;
 
-        // create an empty instruction stream
         let blank_code = ByteCode::alloc(mem)?;
         let instr = InstructionStream::alloc(mem, blank_code)?;
 
@@ -193,7 +61,6 @@ impl Thread {
         })
     }
 
-    /// Retrieve an Upvalue for the given absolute stack offset.
     fn upvalue_lookup<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -218,8 +85,8 @@ impl Thread {
         }
     }
 
-    /// Retrieve an Upvalue for the given absolute stack offset or allocate a new one if none was
-    /// found
+    // Retrieve an Upvalue for the given absolute stack offset or allocate a new one if none was
+    // found
     fn upvalue_lookup_or_alloc<'guard>(
         &self,
         mem: &'guard MutatorView,
@@ -239,7 +106,6 @@ impl Thread {
         }
     }
 
-    /// Execute the next instruction in the current instruction stream
     fn eval_next_instr<'guard>(
         &self,
         mem: &'guard MutatorView,
@@ -613,5 +479,110 @@ impl Thread {
         }
 
         Err(err_eval("Unexpected end of evaluation"))
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::memory::{Memory, Mutator};
+    use crate::list::List;
+    use crate::safe_ptr::{ScopedPtr, TaggedScopedPtr};
+
+    #[test]
+    fn test_run_no_ops() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                view: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+
+                let thread = Thread::alloc(view).unwrap();
+                let bytecode = ByteCode::alloc(view).unwrap();
+                let list = List::new();
+                let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
+
+                for _ in 0..10 {
+                    bytecode.push(view, Opcode::NoOp)?;
+                }
+
+                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+
+                let function = Function::alloc(
+                    view,
+                    nil_ptr,
+                    ScopedPtr::new(view, &list),
+                    bytecode,
+                    None
+                ).unwrap();
+
+                let result = thread.quick_vm_eval(view, function);
+
+                assert!(result.expect("no error") == nil_ptr);
+
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        mem.mutate(&test, ()).unwrap();
+    }
+
+    #[test]
+    fn test_return_literal() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                view: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+
+                let thread = Thread::alloc(view).unwrap();
+                let bytecode = ByteCode::alloc(view).unwrap();
+                let list = List::new();
+                let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
+
+                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+
+                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id})?;
+
+                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+
+                let function = Function::alloc(
+                    view,
+                    nil_ptr,
+                    ScopedPtr::new(view, &list),
+                    bytecode,
+                    None
+                ).unwrap();
+
+                let result = thread.quick_vm_eval(view, function).unwrap().value();
+
+
+                if let Value::Number(n) = result {
+                    assert!(n == 69);
+                } else {
+                    assert!(false);
+                }
+
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        mem.mutate(&test, ()).unwrap();
     }
 }

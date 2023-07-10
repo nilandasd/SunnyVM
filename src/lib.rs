@@ -16,11 +16,13 @@ mod tagged_ptr;
 mod ptr_ops;
 
 mod array;
+mod list;
 mod dict;
 mod function;
 
-mod list;
-
 mod bytecode;
 mod thread;
+mod upvalue;
+mod callframe;
+
 mod vm;
