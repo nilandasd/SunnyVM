@@ -153,17 +153,22 @@ impl Thread {
                 // Evaluate whether the `test` register contains `nil` - if so, set the `dest`
                 // register to the symbol "true", otherwise set it to `nil`
                 Opcode::IsNil { dest, test } => {
+                    todo!()
+                    /*
                     let test_val = window[test as usize].get(mem);
 
                     match *test_val {
                         Value::Nil => window[dest as usize].set(mem.lookup_sym("true")),
                         _ => window[dest as usize].set_to_nil(),
                     }
+                    */
                 }
 
                 // Evaluate whether the `test` register contains an atomic value - i.e. a
                 // non-container type. Set the `dest` register to "true" or `nil`.
                 Opcode::IsAtom { dest, test } => {
+                    todo!()
+                        /*
                     let test_val = window[test as usize].get(mem);
 
                     match *test_val {
@@ -171,9 +176,12 @@ impl Thread {
                         // TODO what other types?
                         _ => window[dest as usize].set(mem.lookup_sym("true")),
                     }
+                    */
                 }
 
                 Opcode::IsIdentical { dest, test1, test2 } => {
+                    todo!()
+                    /*
                     let test1_val = window[test1 as usize].get_ptr();
                     let test2_val = window[test2 as usize].get_ptr();
 
@@ -182,6 +190,7 @@ impl Thread {
                     } else {
                         window[dest as usize].set(mem.nil());
                     }
+                    */
                 }
 
                 Opcode::Jump { offset } => {
@@ -189,6 +198,8 @@ impl Thread {
                 }
 
                 Opcode::JumpIfTrue { test, offset } => {
+                    todo!()
+                    /*
                     let test_val = window[test as usize].get(mem);
 
                     let true_sym = mem.lookup_sym("true"); // TODO preload keyword syms
@@ -196,9 +207,11 @@ impl Thread {
                     if test_val == true_sym {
                         instr.jump(offset)
                     }
+                    */
                 }
 
                 Opcode::JumpIfNotTrue { test, offset } => {
+                    /*
                     let test_val = window[test as usize].get(mem);
 
                     let true_sym = mem.lookup_sym("true");
@@ -206,6 +219,8 @@ impl Thread {
                     if test_val != true_sym {
                         instr.jump(offset)
                     }
+                    */
+                    todo!()
                 }
 
                 Opcode::LoadNil { dest } => {
@@ -217,11 +232,10 @@ impl Thread {
                     window[dest as usize].set_to_ptr(tagged_ptr);
                 }
 
-                // Lookup a global binding and put it in the register `dest`
                 Opcode::LoadGlobal { dest, name } => {
                     let name_val = window[name as usize].get(mem);
 
-                    if let Value::Symbol(_) = *name_val {
+                    if let Value::ArrayU8(_) = *name_val {
                         let lookup_result = globals.lookup(mem, name_val);
 
                         match lookup_result {
@@ -238,10 +252,9 @@ impl Thread {
                     }
                 }
 
-                // Bind a symbol to the `src` register in the globals dict
                 Opcode::StoreGlobal { src, name } => {
                     let name_val = window[name as usize].get(mem);
-                    if let Value::Symbol(_) = *name_val {
+                    if let Value::ArrayU8(_) = *name_val {
                         let src_val = window[src as usize].get(mem);
                         globals.assoc(mem, name_val, src_val)?;
                     } else {
@@ -380,13 +393,6 @@ impl Thread {
                     window[dest as usize].set_to_ptr(upvalue.get(mem, stack)?);
                 }
 
-                // Follow the indirection of an Upvalue to set the value from a local register
-                Opcode::SetUpvalue { dest, src } => {
-                    let closure_env = window[ENV_REG].get(mem);
-                    let upvalue = env_upvalue_lookup(mem, closure_env, dest)?;
-                    upvalue.set(mem, stack, window[src as usize].get_ptr())?;
-                }
-
                 // Move up to 3 stack register values to the Upvalue objects referring to them
                 Opcode::CloseUpvalues { reg1, reg2, reg3 } => {
                     for reg in &[reg1, reg2, reg3] {
@@ -489,6 +495,24 @@ mod test {
     use crate::list::List;
     use crate::safe_ptr::{ScopedPtr, TaggedScopedPtr};
 
+    fn test_helper<'guard>(
+        view: &'guard MutatorView,
+        bytecode: ScopedPtr<'guard, ByteCode>
+    ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
+        let thread = Thread::alloc(view).unwrap();
+        let list = List::alloc(view).unwrap();
+        let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
+        let function = Function::alloc(
+            view,
+            nil_ptr,
+            list,
+            bytecode,
+            None
+        ).unwrap();
+
+        thread.quick_vm_eval(view, function)
+    }
+
     #[test]
     fn test_run_no_ops() {
         let mem = Memory::new();
@@ -504,9 +528,7 @@ mod test {
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
 
-                let thread = Thread::alloc(view).unwrap();
                 let bytecode = ByteCode::alloc(view).unwrap();
-                let list = List::new();
                 let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
 
                 for _ in 0..10 {
@@ -515,15 +537,7 @@ mod test {
 
                 bytecode.push(view, Opcode::Return{ reg: 0 })?;
 
-                let function = Function::alloc(
-                    view,
-                    nil_ptr,
-                    ScopedPtr::new(view, &list),
-                    bytecode,
-                    None
-                ).unwrap();
-
-                let result = thread.quick_vm_eval(view, function);
+                let result = test_helper(view, bytecode);
 
                 assert!(result.expect("no error") == nil_ptr);
 
@@ -550,33 +564,54 @@ mod test {
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
 
-                let thread = Thread::alloc(view).unwrap();
                 let bytecode = ByteCode::alloc(view).unwrap();
-                let list = List::new();
-                let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
-
                 let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
 
                 bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id})?;
-
                 bytecode.push(view, Opcode::Return{ reg: 0 })?;
 
-                let function = Function::alloc(
-                    view,
-                    nil_ptr,
-                    ScopedPtr::new(view, &list),
-                    bytecode,
-                    None
-                ).unwrap();
-
-                let result = thread.quick_vm_eval(view, function).unwrap().value();
-
+                let result = test_helper(view, bytecode).unwrap().value();
 
                 if let Value::Number(n) = result {
                     assert!(n == 69);
                 } else {
                     assert!(false);
                 }
+
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        mem.mutate(&test, ()).unwrap();
+    }
+
+    #[test]
+    fn test_return_nil() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                view: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+
+                let bytecode = ByteCode::alloc(view).unwrap();
+                let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
+                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+
+                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id})?;
+                bytecode.push(view, Opcode::LoadNil{ dest: 0 })?;
+                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+
+                let result = test_helper(view, bytecode).unwrap();
+
+                assert!(result == nil_ptr);
 
                 Ok(())
             }

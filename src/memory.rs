@@ -16,8 +16,8 @@ impl<'memory> MutatorView<'memory> {
         MutatorView { heap: &mem.heap }
     }
 
-    pub fn lookup_sym(&self, name: &str) -> TaggedScopedPtr<'_> {
-        TaggedScopedPtr::new(self, self.heap.lookup_sym(name))
+    pub fn lookup_sym(&self, name: &str) -> Result<FatPtr, RuntimeError> {
+        self.heap.lookup_sym(self, name)
     }
 
     pub fn alloc<T>(&self, object: T) -> Result<ScopedPtr<'_, T>, RuntimeError>
@@ -64,8 +64,8 @@ impl Heap {
         }
     }
 
-    fn lookup_sym(&self, name: &str) -> TaggedPtr {
-        TaggedPtr::symbol(self.syms.lookup(name))
+    fn lookup_sym<'guard>(&self, mem: &'guard MutatorView, name: &str) -> Result<FatPtr, RuntimeError> {
+        Ok(FatPtr::ArrayU8(self.syms.lookup(mem, name)?))
     }
 
     fn alloc<T>(&self, object: T) -> Result<RawPtr<T>, RuntimeError>

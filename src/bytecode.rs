@@ -112,10 +112,6 @@ pub enum Opcode {
         dest: Register,
         src: UpvalueId,
     },
-    SetUpvalue {
-        dest: UpvalueId,
-        src: Register,
-    },
     CloseUpvalues {
         reg1: Register,
         reg2: Register,
@@ -175,8 +171,10 @@ impl ByteCode {
         literal_id: LiteralId,
     ) -> Result<(), RuntimeError> {
         // TODO clone anything mutable
-        self.code
-            .push(mem, Opcode::LoadLiteral { dest, literal_id })
+        self.code.push(
+            mem,
+            Opcode::LoadLiteral { dest, literal_id }
+        )
     }
 
     pub fn push_lit<'guard>(
@@ -282,8 +280,6 @@ mod test {
 
     #[test]
     fn test_opcode_is_32_bits() {
-        // An Opcode should be 32 bits; anything bigger and we've mis-defined some
-        // variant
         assert!(size_of::<Opcode>() == 4);
     }
 }

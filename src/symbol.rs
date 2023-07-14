@@ -1,50 +1,43 @@
-use std::fmt;
 use std::hash::{Hash, Hasher};
-use std::slice;
 use std::str;
 
+use crate::array::{ArrayU8, Array};
 use crate::hashable::Hashable;
-use crate::printer::Print;
 use crate::safe_ptr::MutatorScope;
+use crate::memory::MutatorView;
+use crate::error::RuntimeError;
+use crate::container::{Container, IndexedContainer};
 
-#[derive(Copy, Clone)]
-pub struct Symbol {
-    name_ptr: *const u8,
-    name_len: usize,
-}
+pub type Symbol = Array<u8>;
 
 impl Symbol {
-    pub fn new(name: &str) -> Symbol {
-        Symbol {
-            name_ptr: name.as_ptr(),
-            name_len: name.len(),
+    pub fn from_str<'guard>(mem: &'guard MutatorView, name: &str) -> Result<Symbol, RuntimeError> {
+        let symbol = ArrayU8::with_capacity(mem, name.len() as u32)?;
+
+        for index in 0..symbol.length() {
+            symbol.set(mem, index, name.as_bytes()[index as usize])?;
+        }
+
+        Ok(symbol)
+    }
+
+    pub fn as_str<'guard>(&self, mem: &'guard dyn MutatorScope) -> &str {
+        unsafe {
+            str::from_utf8(self.as_slice(mem)).unwrap()
         }
     }
 
-    // Unsafe because Symbol does not own the &str nor can it know anything about the actual lifetime
-    pub unsafe fn unguarded_as_str<'desired_lifetime>(&self) -> &'desired_lifetime str {
-        let slice = slice::from_raw_parts(self.name_ptr, self.name_len);
-        str::from_utf8(slice).unwrap()
-    }
-
-    pub fn as_str<'guard>(&self, _guard: &'guard dyn MutatorScope) -> &'guard str {
-        unsafe { self.unguarded_as_str() }
-    }
-}
-
-impl Print for Symbol {
-    // Safe because the lifetime of `MutatorScope` defines a safe-access window
-    fn print<'guard>(
-        &self,
-        guard: &'guard dyn MutatorScope,
-        f: &mut fmt::Formatter,
-    ) -> fmt::Result {
-        write!(f, "{}", self.as_str(guard))
+    fn print_str<'guard>(&self, mem: &'guard MutatorView) {
+        unsafe {
+            println!("{:?}", str::from_utf8(self.as_slice(mem)));
+        }
     }
 }
 
 impl Hashable for Symbol {
     fn hash<'guard, H: Hasher>(&self, guard: &'guard dyn MutatorScope, h: &mut H) {
-        self.as_str(guard).hash(h)
+        unsafe {
+            self.as_str(guard).hash(h)
+        }
     }
 }

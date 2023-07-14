@@ -9,7 +9,7 @@ use crate::function::{Function, Closure};
 use crate::list::List;
 use crate::memory::HeapStorage;
 use crate::number::NumberObject;
-use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_SYMBOL};
+use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_FUNC};
 use crate::printer::Print;
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
 use crate::symbol::Symbol;
@@ -28,7 +28,6 @@ pub enum Value<'guard> {
     Nil,
     Number(isize),
     NumberObject(ScopedPtr<'guard, NumberObject>),
-    Symbol(ScopedPtr<'guard, Symbol>),
     Text(ScopedPtr<'guard, Text>),
     Upvalue(ScopedPtr<'guard, Upvalue>),
 }
@@ -37,7 +36,6 @@ impl<'guard> fmt::Display for Value<'guard> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             Value::Nil => write!(f, "nil"),
-            Value::Symbol(s) => s.print(self, f),
             Value::Number(n) => write!(f, "{}", *n),
             Value::Text(t) => t.print(self, f),
             Value::List(a) => a.print(self, f),
@@ -64,7 +62,6 @@ impl<'guard> fmt::Debug for Value<'guard> {
             Value::List(a) => a.debug(self, f),
             Value::Nil => write!(f, "nil"),
             Value::Number(n) => write!(f, "{}", *n),
-            Value::Symbol(s) => s.debug(self, f),
             Value::Text(t) => t.debug(self, f),
             Value::Upvalue(_) => write!(f, "Upvalue"),
             _ => write!(f, "<unidentified-object-type>"),
@@ -86,7 +83,6 @@ pub enum FatPtr {
     Nil,
     Number(isize),
     NumberObject(RawPtr<NumberObject>),
-    Symbol(RawPtr<Symbol>),
     Text(RawPtr<Text>),
     Upvalue(RawPtr<Upvalue>),
 }
@@ -116,9 +112,6 @@ impl FatPtr {
             FatPtr::NumberObject(raw_ptr) => {
                 Value::NumberObject(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
             }
-            FatPtr::Symbol(raw_ptr) => {
-                Value::Symbol(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
-            }
             FatPtr::Text(raw_ptr) => Value::Text(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard))),
             FatPtr::Upvalue(raw_ptr) => {
                 Value::Upvalue(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
@@ -145,7 +138,6 @@ fatptr_from_rawptr!(Dict, Dict);
 fatptr_from_rawptr!(Function, Function);
 fatptr_from_rawptr!(List, List);
 fatptr_from_rawptr!(NumberObject, NumberObject);
-fatptr_from_rawptr!(Symbol, Symbol);
 fatptr_from_rawptr!(Text, Text);
 fatptr_from_rawptr!(Upvalue, Upvalue);
 fatptr_from_rawptr!(Closure, Closure);
@@ -169,7 +161,6 @@ impl PartialEq for FatPtr {
 
         match (*self, *other) {
             (Nil, Nil) => true,
-            (Symbol(p), Symbol(q)) => p == q,
             (Number(i), Number(j)) => i == j,
             (NumberObject(p), NumberObject(q)) => p == q,
             _ => false,
@@ -181,7 +172,7 @@ impl PartialEq for FatPtr {
 pub union TaggedPtr {
     tag: usize,
     number: isize,
-    symbol: NonNull<Symbol>,
+    function: NonNull<Function>,
     list: NonNull<List>,
     object: NonNull<()>,
 }
@@ -207,9 +198,9 @@ impl TaggedPtr {
         }
     }
 
-    pub fn symbol(ptr: RawPtr<Symbol>) -> TaggedPtr {
+    pub fn function(ptr: RawPtr<Function>) -> TaggedPtr {
         TaggedPtr {
-            symbol: ptr.tag(TAG_SYMBOL),
+            function: ptr.tag(TAG_FUNC),
         }
     }
 
@@ -232,7 +223,7 @@ impl TaggedPtr {
             } else {
                 match get_tag(self.tag) {
                     TAG_NUMBER => FatPtr::Number(self.number >> 2),
-                    TAG_SYMBOL => FatPtr::Symbol(RawPtr::untag(self.symbol)),
+                    // TAG_SYMBOL => FatPtr::Symbol(RawPtr::untag(self.symbol)),
                     TAG_LIST => FatPtr::List(RawPtr::untag(self.list)),
                     TAG_OBJECT => {
                         let untyped_object_ptr = RawPtr::untag(self.object).as_untyped();
@@ -262,7 +253,6 @@ impl From<FatPtr> for TaggedPtr {
             FatPtr::Number(value) => TaggedPtr::number(value),
             FatPtr::NumberObject(raw) => TaggedPtr::object(raw),
             FatPtr::Text(raw) => TaggedPtr::object(raw),
-            FatPtr::Symbol(raw) => TaggedPtr::symbol(raw),
             FatPtr::Upvalue(raw) => TaggedPtr::object(raw),
         }
     }

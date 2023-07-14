@@ -56,15 +56,6 @@ impl Function {
         })
     }
 
-    /// Return the Function's name as a string slice
-    pub fn name<'guard>(&self, guard: &'guard dyn MutatorScope) -> &'guard str {
-        let name = self.name.get(guard);
-        match *name {
-            Value::Symbol(s) => s.as_str(guard),
-            _ => "<lambda>",
-        }
-    }
-
     /// Return the number of arguments the Function can take
     pub fn arity(&self) -> u8 {
         self.arity
@@ -114,7 +105,7 @@ impl Print for Function {
         });
 
         match *name {
-            Value::Symbol(s) => write!(f, "Function {} ({})", s.as_str(guard), param_string),
+            Value::ArrayU8(s) => write!(f, "Function {:?} ({})", s.as_str(guard), param_string),
             _ => write!(f, "Function ({})", param_string),
         }
     }

@@ -36,7 +36,7 @@ impl AllocHeader for ArenaHeader {
     }
 
     fn type_id(&self) -> TypeList {
-        TypeList::Symbol
+        TypeList::ArrayU8
     }
 }
 
@@ -55,14 +55,12 @@ impl Arena {
 impl AllocRaw for Arena {
     type Header = ArenaHeader;
 
-    // ANCHOR: DefArenaAlloc
     fn alloc<T>(&self, object: T) -> Result<RawPtr<T>, AllocError>
     where
         T: AllocObject<TypeList>,
     {
         self.heap.alloc(object)
     }
-    // ANCHOR_END: DefArenaAlloc
 
     fn alloc_array(&self, _size_bytes: ArraySize) -> Result<RawPtr<u8>, AllocError> {
         unimplemented!()

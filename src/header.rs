@@ -10,17 +10,12 @@ use crate::list::List;
 use crate::memory::HeapStorage;
 use crate::number::NumberObject;
 use crate::ptr_ops::{AsNonNull, Tagged};
-use crate::symbol::Symbol;
 use crate::tagged_ptr::FatPtr;
 use crate::text::Text;
 use crate::thread::Thread;
 use crate::callframe::CallFrameList;
 use crate::upvalue::Upvalue;
 
-/// Recognized heap-allocated types.
-/// This should represent every type native to the runtime with the exception of tagged pointer inline value
-/// types.
-// ANCHOR: DefTypeList
 #[repr(u16)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub enum TypeList {
@@ -37,7 +32,6 @@ pub enum TypeList {
     InstructionStream,
     List,
     NumberObject,
-    Symbol,
     Text,
     Thread,
     Upvalue,
@@ -72,7 +66,6 @@ impl ObjectHeader {
             TypeList::NumberObject => {
                 FatPtr::NumberObject(RawPtr::untag(object_addr.cast::<NumberObject>()))
             }
-            TypeList::Symbol => FatPtr::Symbol(RawPtr::untag(object_addr.cast::<Symbol>())),
             TypeList::Text => FatPtr::Text(RawPtr::untag(object_addr.cast::<Text>())),
             TypeList::Upvalue => FatPtr::Upvalue(RawPtr::untag(object_addr.cast::<Upvalue>())),
 
@@ -150,7 +143,6 @@ declare_allocobject!(Closure, Closure);
 declare_allocobject!(InstructionStream, InstructionStream);
 declare_allocobject!(List, List);
 declare_allocobject!(NumberObject, NumberObject);
-declare_allocobject!(Symbol, Symbol);
 declare_allocobject!(Text, Text);
 declare_allocobject!(Thread, Thread);
 declare_allocobject!(Upvalue, Upvalue);

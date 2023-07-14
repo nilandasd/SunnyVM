@@ -5,6 +5,8 @@ use zapalloc::{AllocRaw, RawPtr};
 
 use crate::arena::Arena;
 use crate::symbol::Symbol;
+use crate::error::RuntimeError;
+use crate::memory::MutatorView;
 
 pub struct SymbolMap {
     map: RefCell<HashMap<String, RawPtr<Symbol>>>,
@@ -19,16 +21,14 @@ impl SymbolMap {
         }
     }
 
-    pub fn lookup(&self, name: &str) -> RawPtr<Symbol> {
-        {
-            if let Some(ptr) = self.map.borrow().get(name) {
-                return *ptr;
-            }
+    pub fn lookup<'guard>(&self, mem: &'guard MutatorView, name: &str) -> Result<RawPtr<Symbol>, RuntimeError> {
+        if let Some(ptr) = self.map.borrow().get(name) {
+            return Ok(*ptr);
         }
 
         let name = String::from(name);
-        let ptr = self.arena.alloc(Symbol::new(&name)).unwrap();
+        let ptr = self.arena.alloc(Symbol::from_str(mem, &name)?).unwrap();
         self.map.borrow_mut().insert(name, ptr);
-        ptr
+        Ok(ptr)
     }
 }

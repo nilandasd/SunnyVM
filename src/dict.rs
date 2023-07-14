@@ -46,7 +46,7 @@ fn hash_key<'guard>(
     key: TaggedScopedPtr<'guard>,
 ) -> Result<u64, RuntimeError> {
     match *key {
-        Value::Symbol(s) => {
+        Value::ArrayU8(s) => {
             let mut hasher = FnvHasher::default();
             s.hash(guard, &mut hasher);
             Ok(hasher.finish())
@@ -575,7 +575,6 @@ mod test {
 
     #[test]
     fn dict_assoc_dissoc() {
-        // this test should not require resizing the internal array, so should simply test that
         // find_entry() is returning a valid entry for all inserted items
         let mem = Memory::new();
 
