@@ -9,7 +9,7 @@ use crate::safe_ptr::{CellPtr, TaggedScopedPtr};
 use crate::bytecode::{ByteCode, LiteralId};
 use crate::bytecode::Register;
 use crate::bytecode::Opcode;
-use crate::error::RuntimeError;
+use crate::error::{RuntimeError, GeneratorError};
 use crate::memory::{Mutator, MutatorView};
 use crate::thread::Thread;
 use crate::list::List;
@@ -101,56 +101,50 @@ impl<'guard> Generator<'guard> {
         todo!()
     }
 
-    // 2 cases sym is a global or an upvalue
-    // case: global
-    //  generate a load global instruction
-    // case: upvalue  
-    //   add a upvalue to the current function
-    //   and create a 
-    pub fn close_sym(&self, sym: String) -> Register {
+    pub fn load_num(&self, sym: String) -> Register {
         todo!()
     }
 
-    pub fn noop(&self) -> Offset {
+    pub fn noop(&self) -> Result<Offset, GeneratorError> {
         let code = Opcode::NoOp;
 
         self.push_code(code)
     }
 
-    pub fn gen_return(&self, reg: Register) -> Offset {
+    pub fn gen_return(&self, reg: Register) -> Result<Offset, GeneratorError> {
         let code = Opcode::Return { reg };
 
         self.push_code(code)
     }
 
-    pub fn add(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+    pub fn add(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
         let code = Opcode::Add { dest, reg1, reg2 };
 
         self.push_code(code)
     }
 
-    pub fn sub(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+    pub fn sub(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
         let code = Opcode::Add { dest, reg1, reg2 };
 
         self.push_code(code)
     }
 
-    pub fn mul(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+    pub fn mul(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
         let code = Opcode::Multiply { dest, reg1, reg2 };
 
         self.push_code(code)
     }
 
-    pub fn div(&self, dest: Register, num: Register, denom: Register) -> Offset {
+    pub fn div(&self, dest: Register, num: Register, denom: Register) -> Result<Offset, GeneratorError> {
         let code = Opcode::DivideInteger { dest, num, denom };
 
         self.push_code(code)
     }
 
-    fn push_code(&self, code: Opcode) -> Offset {
+    fn push_code(&self, code: Opcode) -> Result<Offset, GeneratorError> {
         let func = self.top_func();
 
-        func.push_code(code, self.view)
+        Ok(func.push_code(code, self.view)?)
     }
 
     fn top_func(&self) -> &FunctionGenerator {
@@ -203,11 +197,11 @@ impl FunctionGenerator {
         }
     }
 
-    fn push_code<'guard>(&self, code: Opcode, view: &'guard MutatorView) -> Offset {
+    fn push_code<'guard>(&self, code: Opcode, view: &'guard MutatorView) -> Result<Offset, RuntimeError> {
         let bytecode = self.function.get(view).code(view);
 
-        bytecode.push(view, code);
+        bytecode.push(view, code)?;
 
-        bytecode.last_instruction()
+        Ok(bytecode.last_instruction())
     }
 }

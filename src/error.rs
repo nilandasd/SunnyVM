@@ -37,6 +37,10 @@ pub struct RuntimeError {
     pos: Option<SourcePos>,
 }
 
+#[derive(Debug, PartialEq)]
+pub struct GeneratorError {
+}
+
 impl RuntimeError {
     pub fn new(kind: ErrorKind) -> RuntimeError {
         RuntimeError {
@@ -117,6 +121,12 @@ impl From<ReadlineError> for RuntimeError {
     }
 }
 */
+
+impl From<RuntimeError> for GeneratorError {
+    fn from(other: RuntimeError) -> GeneratorError {
+        GeneratorError{}
+    }
+}
 
 // Convert from BlockError
 impl From<BlockError> for RuntimeError {
