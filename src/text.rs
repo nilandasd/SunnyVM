@@ -12,7 +12,7 @@ use crate::printer::Print;
 use crate::raw_array::RawArray;
 use crate::safe_ptr::MutatorScope;
 
-/// While Text is somewhat similar to Symbol, it is instead garbage-collected heap allocated and not interned.
+// While Text is somewhat similar to Symbol, it is instead garbage-collected heap allocated and not interned.
 #[derive(Copy, Clone)]
 pub struct Text {
     content: RawArray<u8>,

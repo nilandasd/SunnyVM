@@ -138,8 +138,9 @@ impl ByteCode {
         })
     }
 
-    pub fn push<'guard>(&self, mem: &'guard MutatorView, op: Opcode) -> Result<(), RuntimeError> {
-        self.code.push(mem, op)
+    pub fn push<'guard>(&self, mem: &'guard MutatorView, op: Opcode) -> Result<u32, RuntimeError> {
+        self.code.push(mem, op)?;
+        Ok(self.code.length() - 1)
     }
 
     pub fn update_jump_offset<'guard>(

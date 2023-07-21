@@ -1,11 +1,14 @@
 use zapalloc::{ZapHeap, RawPtr, AllocObject, AllocRaw, ArraySize};
+use std::cell::RefCell;
+use std::collections::HashMap;
 
 use crate::error::RuntimeError;
 use crate::header::{ObjectHeader, TypeList};
 use crate::ptr_ops::ScopedRef;
 use crate::safe_ptr::{MutatorScope, ScopedPtr, TaggedScopedPtr};
-use crate::symbol_map::SymbolMap;
 use crate::tagged_ptr::{FatPtr, TaggedPtr};
+
+pub type SymbolId = usize;
 
 pub struct MutatorView<'memory> {
     heap: &'memory Heap,
@@ -16,8 +19,8 @@ impl<'memory> MutatorView<'memory> {
         MutatorView { heap: &mem.heap }
     }
 
-    pub fn lookup_sym(&self, name: &str) -> Result<FatPtr, RuntimeError> {
-        self.heap.lookup_sym(self, name)
+    pub fn lookup_sym(&self, name: &str) -> TaggedScopedPtr<'_> {
+        TaggedScopedPtr::new(self, TaggedPtr::number(self.heap.lookup_sym(name)as isize))
     }
 
     pub fn alloc<T>(&self, object: T) -> Result<ScopedPtr<'_, T>, RuntimeError>
@@ -53,19 +56,27 @@ pub type HeapStorage = ZapHeap<ObjectHeader>;
 
 struct Heap {
     heap: HeapStorage,
-    syms: SymbolMap,
+    map: RefCell<HashMap<String, SymbolId>>,
 }
 
 impl Heap {
     fn new() -> Heap {
         Heap {
             heap: HeapStorage::new(),
-            syms: SymbolMap::new(),
+            map: RefCell::new(HashMap::<String, SymbolId>::new()),
         }
     }
 
-    fn lookup_sym<'guard>(&self, mem: &'guard MutatorView, name: &str) -> Result<FatPtr, RuntimeError> {
-        Ok(FatPtr::ArrayU8(self.syms.lookup(mem, name)?))
+    fn lookup_sym<'guard>(&self, name: &str) -> SymbolId {
+        if let Some(sym_id) = self.map.borrow().get(&String::from(name)) {
+            return *sym_id;
+        }
+
+        let new_id = self.map.borrow().len();
+
+        self.map.borrow_mut().insert(String::from(name), new_id);
+
+        new_id
     }
 
     fn alloc<T>(&self, object: T) -> Result<RawPtr<T>, RuntimeError>
@@ -112,4 +123,3 @@ pub trait Mutator: Sized {
     // TODO
     // function to return iterator that iterates over roots
 }
-// ANCHOR_END: DefMutator

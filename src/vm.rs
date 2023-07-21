@@ -1,57 +1,65 @@
-use crate::symbol_map::SymbolMap;
+use std::collections::HashMap;
+
 use crate::memory::Memory;
+use crate::error::RuntimeError;
+use crate::memory::{MutatorView, Mutator};
+use crate::generator::{Generator, GeneratorGenerator, Compiler};
+use crate::safe_ptr::{CellPtr};
 use crate::thread::Thread;
-use crate::generator::Generator;
-use zapalloc::{AllocRaw, RawPtr};
-use crate::symbol::{Symbol};
-use crate::bytecode::Register;
 
 // Sunny VM ☀️
 
 pub struct SVM {
     memory: Memory,
-    symbols: SymbolMap,
-    //generator: Generator,
 }
 
 impl SVM {
     pub fn new() -> SVM {
         SVM {
-            symbols: SymbolMap::new(),
             memory: Memory::new(),
-            //generator: Generator::new(),
         }
     }
 
+    pub fn compile<T: Compiler>(&mut self, compiler: T) -> Result<(), RuntimeError> {
+        let gen_gen = GeneratorGenerator::<T>::new();
 
-    // Returns the register for the given symbol in the current scope
-    // either by finding the assigned register or assigning a new one.
-    /*
-    pub fn sym_reg(&self, name: &str) {
-        let sym_ptr = self.symbols.lookup(name);
-
-        self.generator.set_sym(&self.symbols, name)
+        self.memory.mutate(&gen_gen, compiler)
     }
+}
 
-    pub fn num(&self, n: isize) {
-        self.generator.create_lit(&self.symbols, name)
+impl Mutator for SVM {
+    type Input = ();
+    type Output = ();
+
+    fn run(
+        &self,
+        view: &MutatorView,
+        _input: Self::Input,
+    ) -> Result<Self::Output, RuntimeError> {
+        // tell the thread in the generator to run the global code
+        todo!()
     }
-    */
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::error::RuntimeError;
-    use crate::memory::MutatorView;
-    use crate::memory::{Memory, Mutator};
-    use crate::list::List;
-    use crate::safe_ptr::{ScopedPtr, TaggedScopedPtr};
+
+    struct TestCompiler {}
+
+    impl Compiler for TestCompiler {
+        fn compile<'guard>(self, generator: &mut Generator) -> Result<(), ()> {
+            todo!()
+        }
+    }
 
     #[test]
-    fn test_store_load_global() {
+    fn test_add() {
         let mut vm = SVM::new();
+        let test_compiler = TestCompiler{};
 
+        vm.compile(test_compiler);
+        // vm.run();
     }
 }
 /*

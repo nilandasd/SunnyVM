@@ -1,8 +1,5 @@
 mod memory;
 mod safe_ptr;
-mod symbol_map;
-mod symbol;
-mod arena;
 mod hashable;
 mod container;
 mod error;

@@ -9,23 +9,22 @@ use crate::list::List;
 use crate::memory::MutatorView;
 use crate::printer::Print;
 use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
-use crate::tagged_ptr::Value;
+use crate::tagged_ptr::{Value, TaggedPtr};
 
 #[derive(Clone)]
 pub struct Function {
     name: TaggedCellPtr,
-    /// Number of arguments required to activate the function
+    // Number of arguments required to activate the function
     arity: u8,
-    /// Instructions comprising the function code
+    // Instructions comprising the function code
     code: CellPtr<ByteCode>,
-    /// Param names are stored for introspection of a function signature
+    // Param names are stored for introspection of a function signature
     param_names: CellPtr<List>,
-    /// List of (CallFrame-index: u8 | Window-index: u8) relative offsets from this function's
-    /// declaration where nonlocal variables will be found. Needed when creating a closure. May be
-    /// nil
+    // List of (CallFrame-index: u8 | Window-index: u8) relative offsets from this function's
+    // declaration where nonlocal variables will be found. Needed when creating a closure. May be
+    // nil
     nonlocal_refs: TaggedCellPtr,
 }
-// ANCHOR_END: DefFunction
 
 impl Function {
     /// Allocate a Function object on the heap.
@@ -50,6 +49,23 @@ impl Function {
         mem.alloc(Function {
             name: TaggedCellPtr::new_with(name),
             arity: param_names.length() as u8,
+            code: CellPtr::new_with(code),
+            param_names: CellPtr::new_with(param_names),
+            nonlocal_refs,
+        })
+    }
+
+    pub fn default_alloc<'guard>(
+        mem: &'guard MutatorView,
+    ) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {
+        let nil_ptr = TaggedScopedPtr::new(mem, TaggedPtr::nil());
+        let param_names = List::alloc(mem)?;
+        let code = ByteCode::alloc(mem)?;
+        let nonlocal_refs = TaggedCellPtr::new_nil();
+
+        mem.alloc(Function {
+            name: TaggedCellPtr::new_with(nil_ptr),
+            arity: 0,
             code: CellPtr::new_with(code),
             param_names: CellPtr::new_with(param_names),
             nonlocal_refs,
@@ -105,7 +121,7 @@ impl Print for Function {
         });
 
         match *name {
-            Value::ArrayU8(s) => write!(f, "Function {:?} ({})", s.as_str(guard), param_string),
+            Value::Text(s) => write!(f, "Function {:?} ({})", s.as_str(guard), param_string),
             _ => write!(f, "Function ({})", param_string),
         }
     }

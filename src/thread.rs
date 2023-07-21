@@ -374,7 +374,9 @@ impl Thread {
                 }
 
                 // TODO
-                Opcode::Add { dest, reg1, reg2 } => unimplemented!(),
+                Opcode::Add { dest, reg1, reg2 } => {
+
+                },
 
                 // TODO
                 Opcode::Subtract { dest, left, right } => unimplemented!(),
@@ -605,7 +607,7 @@ mod test {
                 let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
                 let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
 
-                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id})?;
+                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id })?;
                 bytecode.push(view, Opcode::LoadNil{ dest: 0 })?;
                 bytecode.push(view, Opcode::Return{ reg: 0 })?;
 

@@ -1,13 +1,9 @@
 use std::cell::Cell;
 use std::fmt;
-use std::hash::Hasher;
-
-use fnv::FnvHasher;
 
 use zapalloc::ArraySize;
 use crate::container::{Container, HashIndexedAnyContainer};
 use crate::error::{ErrorKind, RuntimeError};
-use crate::hashable::Hashable;
 use crate::memory::MutatorView;
 use crate::printer::Print;
 use crate::raw_array::{default_array_growth, RawArray};
@@ -38,24 +34,16 @@ impl DictItem {
     }
 }
 
-/// Generate a hash value for a key
 /// TODO move this function somewhere more suitable
-// ANCHOR: DefHashKey
 fn hash_key<'guard>(
     guard: &'guard dyn MutatorScope,
     key: TaggedScopedPtr<'guard>,
 ) -> Result<u64, RuntimeError> {
     match *key {
-        Value::ArrayU8(s) => {
-            let mut hasher = FnvHasher::default();
-            s.hash(guard, &mut hasher);
-            Ok(hasher.finish())
-        }
         Value::Number(n) => Ok(n as u64),
         _ => Err(RuntimeError::new(ErrorKind::UnhashableError)),
     }
 }
-// ANCHOR_END: DefHashKey
 
 // ANCHOR: DefFindEntry
 /// Given a key, generate the hash and search for an entry that either matches this hash
@@ -237,7 +225,6 @@ impl HashIndexedAnyContainer for Dict {
         }
     }
 
-    // ANCHOR: DefHashIndexedAnyContainerForDictAssoc
     fn assoc<'guard>(
         &self,
         mem: &'guard MutatorView,
@@ -275,9 +262,7 @@ impl HashIndexedAnyContainer for Dict {
 
         Ok(())
     }
-    // ANCHOR_END: DefHashIndexedAnyContainerForDictAssoc
 
-    // ANCHOR: DefHashIndexedAnyContainerForDictDissoc
     fn dissoc<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -303,7 +288,6 @@ impl HashIndexedAnyContainer for Dict {
         // return the value that was associated with the key
         Ok(entry.value.get(guard))
     }
-    // ANCHOR_END: DefHashIndexedAnyContainerForDictDissoc
 
     fn exists<'guard>(
         &self,

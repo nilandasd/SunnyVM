@@ -222,7 +222,6 @@ impl<T: Sized + Clone> FillContainer<T> for Array<T> {
 
 impl<T: Sized + Clone> StackContainer<T> for Array<T> {
     /// Push can trigger an underlying array resize, hence it requires the ability to allocate
-    // ANCHOR: DefStackContainerArrayPush
     fn push<'guard>(&self, mem: &'guard MutatorView, item: T) -> Result<(), RuntimeError> {
         if self.borrow.get() != INTERIOR_ONLY {
             return Err(RuntimeError::new(ErrorKind::MutableBorrowError));
@@ -247,7 +246,6 @@ impl<T: Sized + Clone> StackContainer<T> for Array<T> {
         self.write(mem, length, item)?;
         Ok(())
     }
-    // ANCHOR_END: DefStackContainerArrayPush
 
     /// Pop returns None if the container is empty, otherwise moves the last item of the array
     /// out to the caller.

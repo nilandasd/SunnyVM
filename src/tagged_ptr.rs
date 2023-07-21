@@ -12,7 +12,6 @@ use crate::number::NumberObject;
 use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_FUNC};
 use crate::printer::Print;
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
-use crate::symbol::Symbol;
 use crate::text::Text;
 use crate::upvalue::Upvalue;
 
@@ -186,7 +185,7 @@ impl TaggedPtr {
         unsafe { self.tag == 0 }
     }
 
-    fn object<T>(ptr: RawPtr<T>) -> TaggedPtr {
+    pub fn object<T>(ptr: RawPtr<T>) -> TaggedPtr {
         TaggedPtr {
             object: ptr.tag(TAG_OBJECT).cast::<()>(),
         }
@@ -223,7 +222,7 @@ impl TaggedPtr {
             } else {
                 match get_tag(self.tag) {
                     TAG_NUMBER => FatPtr::Number(self.number >> 2),
-                    // TAG_SYMBOL => FatPtr::Symbol(RawPtr::untag(self.symbol)),
+                    TAG_FUNC => FatPtr::Function(RawPtr::untag(self.function)),
                     TAG_LIST => FatPtr::List(RawPtr::untag(self.list)),
                     TAG_OBJECT => {
                         let untyped_object_ptr = RawPtr::untag(self.object).as_untyped();
@@ -246,7 +245,7 @@ impl From<FatPtr> for TaggedPtr {
             FatPtr::ArrayU16(raw) => TaggedPtr::object(raw),
             FatPtr::ArrayU32(raw) => TaggedPtr::object(raw),
             FatPtr::Dict(raw) => TaggedPtr::object(raw),
-            FatPtr::Function(raw) => TaggedPtr::object(raw),
+            FatPtr::Function(raw) => TaggedPtr::function(raw),
             FatPtr::Closure(raw) => TaggedPtr::object(raw),
             FatPtr::List(raw) => TaggedPtr::list(raw),
             FatPtr::Nil => TaggedPtr::nil(),
