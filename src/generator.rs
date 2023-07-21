@@ -6,7 +6,7 @@ use zapalloc::ArraySize;
 
 use crate::tagged_ptr::TaggedPtr;
 use crate::safe_ptr::{CellPtr, TaggedScopedPtr};
-use crate::bytecode::{ByteCode, LiteralId};
+use crate::bytecode::{ByteCode, LiteralId, JumpOffset};
 use crate::bytecode::Register;
 use crate::bytecode::Opcode;
 use crate::error::{RuntimeError, GeneratorError};
@@ -17,19 +17,16 @@ use crate::function::Function;
 
 
 // BYTECODE TODO:
-// loadliteral
 // isnil
 // isatom
 // isidentical
-// jump
-// jumpiftrue
-// jumpiffalse
-// loadnil
+// je
+// jne
+// jz
 // loadglobal
 // storeglobal
 // call
 // makeclosure
-// loadinteger
 // copyregister
 // getupvalue
 // closeupvalue
@@ -114,6 +111,18 @@ impl<'guard> Generator<'guard> {
         self.push_code(code)
     }
 
+    pub fn load_nil(&self, dest: Register) -> Result<Offset, GeneratorError> {
+        let code = Opcode::LoadNil { dest };
+
+        self.push_code(code)
+    }
+
+    pub fn jump(&self, offset: JumpOffset) -> Result<Offset, GeneratorError> {
+        let code = Opcode::Jump { offset };
+
+        self.push_code(code)
+    }
+
     pub fn noop(&self) -> Result<Offset, GeneratorError> {
         let code = Opcode::NoOp;
 
@@ -185,21 +194,9 @@ struct NonLocal {
     frame_register: u8,
 }
 
-struct Scope {
-    vars: HashMap<String, Variable>,
-}
-
-impl Scope {
-    fn new() -> Scope {
-        Scope {
-            vars: HashMap::new()
-        }
-    }
-}
-
 struct FunctionGenerator {
     next_reg: u8,
-    scopes: Vec<Scope>,
+    vars: HashMap<String, Variable>,
     nonlocals: HashMap<String, NonLocal>,
     function: CellPtr<Function>,
 }
@@ -208,7 +205,7 @@ impl FunctionGenerator {
     fn new(function: CellPtr<Function>) -> FunctionGenerator {
         FunctionGenerator {
             next_reg: 0,
-            scopes: vec![Scope::new()],
+            vars: HashMap::new(),
             nonlocals: HashMap::new(),
             function,
         }
