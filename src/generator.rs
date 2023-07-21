@@ -97,12 +97,21 @@ impl<'guard> Generator<'guard> {
         Generator { globals, func_stack, thread, args, view }
     }
 
+    // this could cause a global alloc or a local alloc
     pub fn decl_sym(&self, sym: String) -> Register {
         todo!()
     }
 
-    pub fn load_num(&self, sym: String) -> Register {
-        todo!()
+    pub fn load_num(&self, dest: Register, num: isize) -> Result<Offset, GeneratorError> {
+        let code = if (num as i16) < i16::MIN || i16::MAX < (num as i16) {
+            let literal_id = self.lit_num(num)?;
+
+            Opcode::LoadLiteral { dest, literal_id }
+        } else {
+            Opcode::LoadInteger { dest, integer: num as i16}
+        };
+
+        self.push_code(code)
     }
 
     pub fn noop(&self) -> Result<Offset, GeneratorError> {
@@ -139,6 +148,14 @@ impl<'guard> Generator<'guard> {
         let code = Opcode::DivideInteger { dest, num, denom };
 
         self.push_code(code)
+    }
+
+    fn lit_num(&self, num: isize) -> Result<LiteralId, GeneratorError> {
+        // create a number object from an isize
+        // load the number object into the current bytecode
+        // return the literal id
+
+        todo!()
     }
 
     fn push_code(&self, code: Opcode) -> Result<Offset, GeneratorError> {
