@@ -19,6 +19,8 @@ pub trait Compiler {
     fn compile<'guard>(self, generator: &mut Generator) -> Result<(), ()>;
 }
 
+pub type Offset = u32;
+
 pub struct GeneratorGenerator<T> {
     _compiler_type: PhantomData<T>,
 }
@@ -90,8 +92,38 @@ impl<'guard> Generator<'guard> {
         todo!()
     }
 
-    pub fn get_sym(&self, sym: String) -> Register {
-        todo!()
+    pub fn add(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+        let code = Opcode::Add { dest, reg1, reg2 };
+
+        self.push_code(code)
+    }
+
+    pub fn sub(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+        let code = Opcode::Add { dest, reg1, reg2 };
+
+        self.push_code(code)
+    }
+
+    pub fn mul(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
+        let code = Opcode::Multiply { dest, reg1, reg2 };
+
+        self.push_code(code)
+    }
+
+    pub fn div(&self, dest: Register, num: Register, denom: Register) -> Offset {
+        let code = Opcode::DivideInteger { dest, num, denom };
+
+        self.push_code(code)
+    }
+
+    fn push_code(&self, code: Opcode) -> Offset {
+        let func = self.top_func();
+
+        func.push_code(code, self.view)
+    }
+
+    fn top_func(&self) -> &FunctionGenerator {
+        self.func_stack.last().unwrap()
     }
 }
 
@@ -138,5 +170,13 @@ impl FunctionGenerator {
             nonlocals: HashMap::new(),
             function,
         }
+    }
+
+    fn push_code<'guard>(&self, code: Opcode, view: &'guard MutatorView) -> Offset {
+        let bytecode = self.function.get(view).code(view);
+
+        bytecode.push(view, code);
+
+        bytecode.last_instruction()
     }
 }
