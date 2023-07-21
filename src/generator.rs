@@ -15,6 +15,25 @@ use crate::thread::Thread;
 use crate::list::List;
 use crate::function::Function;
 
+
+// BYTECODE TODO:
+// loadliteral
+// isnil
+// isatom
+// isidentical
+// jump
+// jumpiftrue
+// jumpiffalse
+// loadnil
+// loadglobal
+// storeglobal
+// call
+// makeclosure
+// loadinteger
+// copyregister
+// getupvalue
+// closeupvalue
+
 pub trait Compiler {
     fn compile<'guard>(self, generator: &mut Generator) -> Result<(), ()>;
 }
@@ -90,6 +109,18 @@ impl<'guard> Generator<'guard> {
     //   and create a 
     pub fn close_sym(&self, sym: String) -> Register {
         todo!()
+    }
+
+    pub fn noop(&self) -> Offset {
+        let code = Opcode::NoOp;
+
+        self.push_code(code)
+    }
+
+    pub fn gen_return(&self, reg: Register) -> Offset {
+        let code = Opcode::Return { reg };
+
+        self.push_code(code)
     }
 
     pub fn add(&self, dest: Register, reg1: Register, reg2: Register) -> Offset {
