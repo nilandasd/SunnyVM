@@ -11,7 +11,7 @@ pub trait AsNonNull {
 }
 
 const TAG_MASK: usize = 0x3;
-pub const TAG_FUNC: usize = 0x0;
+pub const TAG_SYMBOL: usize = 0x0;
 pub const TAG_LIST: usize = 0x1;
 pub const TAG_OBJECT: usize = 0x2;
 pub const TAG_NUMBER: usize = 0x3;

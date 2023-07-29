@@ -20,7 +20,7 @@ impl<'memory> MutatorView<'memory> {
     }
 
     pub fn lookup_sym(&self, name: &str) -> TaggedScopedPtr<'_> {
-        TaggedScopedPtr::new(self, TaggedPtr::number(self.heap.lookup_sym(name)as isize))
+        TaggedScopedPtr::new(self, TaggedPtr::symbol(self.heap.lookup_sym(name)))
     }
 
     pub fn alloc<T>(&self, object: T) -> Result<ScopedPtr<'_, T>, RuntimeError>

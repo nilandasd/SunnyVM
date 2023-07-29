@@ -7,9 +7,9 @@ use crate::array::{ArrayU16, ArrayU32, ArrayU8};
 use crate::dict::Dict;
 use crate::function::{Function, Closure};
 use crate::list::List;
-use crate::memory::HeapStorage;
+use crate::memory::{HeapStorage, SymbolId};
 use crate::number::NumberObject;
-use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_FUNC};
+use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_SYMBOL};
 use crate::printer::Print;
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
 use crate::text::Text;
@@ -26,6 +26,7 @@ pub enum Value<'guard> {
     List(ScopedPtr<'guard, List>),
     Nil,
     Number(isize),
+    Symbol(SymbolId),
     NumberObject(ScopedPtr<'guard, NumberObject>),
     Text(ScopedPtr<'guard, Text>),
     Upvalue(ScopedPtr<'guard, Upvalue>),
@@ -36,6 +37,7 @@ impl<'guard> fmt::Display for Value<'guard> {
         match self {
             Value::Nil => write!(f, "nil"),
             Value::Number(n) => write!(f, "{}", *n),
+            Value::Symbol(n) => write!(f, "SymbolId: {}", *n),
             Value::Text(t) => t.print(self, f),
             Value::List(a) => a.print(self, f),
             Value::ArrayU8(a) => a.print(self, f),
@@ -61,6 +63,7 @@ impl<'guard> fmt::Debug for Value<'guard> {
             Value::List(a) => a.debug(self, f),
             Value::Nil => write!(f, "nil"),
             Value::Number(n) => write!(f, "{}", *n),
+            Value::Symbol(n) => write!(f, "SymbolId: {}", *n),
             Value::Text(t) => t.debug(self, f),
             Value::Upvalue(_) => write!(f, "Upvalue"),
             _ => write!(f, "<unidentified-object-type>"),
@@ -81,6 +84,7 @@ pub enum FatPtr {
     List(RawPtr<List>),
     Nil,
     Number(isize),
+    Symbol(SymbolId),
     NumberObject(RawPtr<NumberObject>),
     Text(RawPtr<Text>),
     Upvalue(RawPtr<Upvalue>),
@@ -108,6 +112,7 @@ impl FatPtr {
             FatPtr::List(raw_ptr) => Value::List(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard))),
             FatPtr::Nil => Value::Nil,
             FatPtr::Number(num) => Value::Number(*num),
+            FatPtr::Symbol(symbol_id) => Value::Symbol(*symbol_id),
             FatPtr::NumberObject(raw_ptr) => {
                 Value::NumberObject(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
             }
@@ -171,7 +176,7 @@ impl PartialEq for FatPtr {
 pub union TaggedPtr {
     tag: usize,
     number: isize,
-    function: NonNull<Function>,
+    symbol: SymbolId,
     list: NonNull<List>,
     object: NonNull<()>,
 }
@@ -197,9 +202,15 @@ impl TaggedPtr {
         }
     }
 
-    pub fn function(ptr: RawPtr<Function>) -> TaggedPtr {
+    pub fn symbol(value: SymbolId) -> TaggedPtr {
         TaggedPtr {
-            function: ptr.tag(TAG_FUNC),
+            symbol: (((value as usize) << 2) | TAG_SYMBOL) as SymbolId,
+        }
+    }
+
+    pub fn literal_symbol(value: u16) -> TaggedPtr {
+        TaggedPtr {
+            symbol: (((value as usize) << 2) | TAG_SYMBOL) as SymbolId,
         }
     }
 
@@ -222,7 +233,7 @@ impl TaggedPtr {
             } else {
                 match get_tag(self.tag) {
                     TAG_NUMBER => FatPtr::Number(self.number >> 2),
-                    TAG_FUNC => FatPtr::Function(RawPtr::untag(self.function)),
+                    TAG_SYMBOL => FatPtr::Symbol(self.symbol >> 2),
                     TAG_LIST => FatPtr::List(RawPtr::untag(self.list)),
                     TAG_OBJECT => {
                         let untyped_object_ptr = RawPtr::untag(self.object).as_untyped();
@@ -245,11 +256,12 @@ impl From<FatPtr> for TaggedPtr {
             FatPtr::ArrayU16(raw) => TaggedPtr::object(raw),
             FatPtr::ArrayU32(raw) => TaggedPtr::object(raw),
             FatPtr::Dict(raw) => TaggedPtr::object(raw),
-            FatPtr::Function(raw) => TaggedPtr::function(raw),
+            FatPtr::Function(raw) => TaggedPtr::object(raw),
             FatPtr::Closure(raw) => TaggedPtr::object(raw),
             FatPtr::List(raw) => TaggedPtr::list(raw),
             FatPtr::Nil => TaggedPtr::nil(),
             FatPtr::Number(value) => TaggedPtr::number(value),
+            FatPtr::Symbol(value) => TaggedPtr::symbol(value),
             FatPtr::NumberObject(raw) => TaggedPtr::object(raw),
             FatPtr::Text(raw) => TaggedPtr::object(raw),
             FatPtr::Upvalue(raw) => TaggedPtr::object(raw),

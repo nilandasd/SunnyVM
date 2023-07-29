@@ -16,6 +16,7 @@ use crate::tagged_ptr::TaggedPtr;
 pub type Register = u8;
 
 pub type LiteralInteger = i16;
+pub type LiteralSymbol = u16;
 
 pub type LiteralId = u16;
 
@@ -84,6 +85,10 @@ pub enum Opcode {
         dest: Register,
         integer: LiteralInteger,
     },
+    LoadSymbol {
+        dest: Register,
+        symbol: LiteralSymbol,
+    },
     CopyRegister {
         dest: Register,
         src: Register,
@@ -108,9 +113,13 @@ pub enum Opcode {
         num: Register,
         denom: Register,
     },
-    GetUpvalue {
+    LoadUpvalue {
         dest: Register,
         src: UpvalueId,
+    },
+    StoreUpvalue {
+        dest: UpvalueId,
+        src: Register,
     },
     CloseUpvalues {
         reg1: Register,

@@ -33,6 +33,8 @@ pub struct Thread {
     upvalues: CellPtr<Dict>,
     globals: CellPtr<Dict>,
     instr: CellPtr<InstructionStream>,
+    // arrays: ArrayTable,
+    // an array table or should the memory hold the array pointer?
 }
 
 impl Thread {
@@ -232,6 +234,11 @@ impl Thread {
                     window[dest as usize].set_to_ptr(tagged_ptr);
                 }
 
+                Opcode::LoadSymbol { dest, symbol } => {
+                    let tagged_ptr = TaggedPtr::literal_symbol(symbol);
+                    window[dest as usize].set_to_ptr(tagged_ptr);
+                }
+
                 Opcode::LoadGlobal { dest, name } => {
                     let name_val = window[name as usize].get(mem);
 
@@ -389,11 +396,17 @@ impl Thread {
 
                 // Follow the indirection of an Upvalue to retrieve the value, copy the value to a
                 // local register
-                Opcode::GetUpvalue { dest, src } => {
+                Opcode::LoadUpvalue { dest, src } => {
                     let closure_env = window[ENV_REG].get(mem);
                     let upvalue = env_upvalue_lookup(mem, closure_env, src)?;
                     window[dest as usize].set_to_ptr(upvalue.get(mem, stack)?);
-                }
+                },
+
+                Opcode::StoreUpvalue { dest, src } => {
+                    let closure_env = window[ENV_REG].get(mem);
+                    let upvalue = env_upvalue_lookup(mem, closure_env, dest)?;
+                    upvalue.set(mem, stack, window[src as usize].get_ptr())?;
+                },
 
                 // Move up to 3 stack register values to the Upvalue objects referring to them
                 Opcode::CloseUpvalues { reg1, reg2, reg3 } => {

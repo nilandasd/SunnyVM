@@ -4,32 +4,15 @@ use std::cell::Cell;
 
 use zapalloc::ArraySize;
 
-use crate::tagged_ptr::TaggedPtr;
-use crate::safe_ptr::{CellPtr, TaggedScopedPtr};
+use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::safe_ptr::{CellPtr, TaggedScopedPtr, TaggedCellPtr};
 use crate::bytecode::{ByteCode, LiteralId, JumpOffset};
-use crate::bytecode::Register;
-use crate::bytecode::Opcode;
+use crate::bytecode::{Register, Opcode};
 use crate::error::{RuntimeError, GeneratorError};
-use crate::memory::{Mutator, MutatorView};
+use crate::memory::{Mutator, MutatorView, SymbolId};
 use crate::thread::Thread;
 use crate::list::List;
 use crate::function::Function;
-
-
-// BYTECODE TODO:
-// isnil
-// isatom
-// isidentical
-// je
-// jne
-// jz
-// loadglobal
-// storeglobal
-// call
-// makeclosure
-// copyregister
-// getupvalue
-// closeupvalue
 
 pub trait Compiler {
     fn compile<'guard>(self, generator: &mut Generator) -> Result<(), ()>;
@@ -37,185 +20,208 @@ pub trait Compiler {
 
 pub type Offset = u32;
 
-pub struct GeneratorGenerator<T> {
+pub struct MetaGenerator<T> {
     _compiler_type: PhantomData<T>,
 }
 
-impl<T> GeneratorGenerator<T> {
-    pub fn new() -> GeneratorGenerator<T> {
-        GeneratorGenerator {
+impl<T> MetaGenerator<T> {
+    pub fn new() -> MetaGenerator<T> {
+        MetaGenerator {
             _compiler_type: PhantomData,
         }
     }
 }
 
-impl<T: Compiler> Mutator for GeneratorGenerator<T> {
+impl<T: Compiler> Mutator for MetaGenerator<T> {
     type Input = T;
-    type Output = ();
+    type Output = CellPtr<Thread>;
 
     fn run(
         &self,
         view: &MutatorView,
         compiler: Self::Input,
     ) -> Result<Self::Output, RuntimeError> {
-        let globals = HashMap::<String, Register>::new();
-        let mut func_stack = vec![];
+        let mut generator = Generator::alloc(view, None)?;
         let thread = CellPtr::from(Thread::alloc(view)?);
-        let args = CellPtr::from(List::alloc(view)?);
-        let main_func = CellPtr::from(Function::default_alloc(view)?);
-        let func_gen = FunctionGenerator::new(main_func);
-
-        func_stack.push(func_gen);
-
-        let mut generator = Generator::new(globals, func_stack, thread, args, view);
 
         compiler.compile(&mut generator);
 
-        Ok(())
+        // set the thread to point generator main func
+
+        Ok(thread)
     }
 }
 
-pub struct Generator<'guard> {
-    globals: HashMap<String, Register>,
-    func_stack: Vec<FunctionGenerator>,
-    thread: CellPtr<Thread>,
-    args: CellPtr<List>,
+type TempId = usize; // TODO: allow for more then 256 temps
+
+#[derive(Eq, Hash, PartialEq, Copy, Clone)]
+enum Var {
+    Symbol(SymbolId),
+    Temp(TempId),
+}
+
+pub struct Binding {
+    location: BindSite,
+    initialized: bool,
+    kind: VarKind,
+}
+
+enum BindSite {
+    Register(Register),
+    Overflow(usize),
+}
+
+enum VarKind {
+    Upvalue {
+        upvalue_id: u8,
+        frame_offset: u8,
+        frame_register: u8,
+    },
+    Global,
+    Local,
+    Temp,
+}
+
+pub struct Generator<'guard, 'parent> {
     view: &'guard MutatorView<'guard>,
-}
-
-impl<'guard> Generator<'guard> {
-    fn new(
-        globals: HashMap<String, Register>,
-        func_stack: Vec<FunctionGenerator>,
-        thread: CellPtr<Thread>,
-        args: CellPtr<List>,
-        view: &'guard MutatorView<'guard>,
-    ) -> Generator<'guard> {
-        Generator { globals, func_stack, thread, args, view }
-    }
-
-    // this could cause a global alloc or a local alloc
-    pub fn decl_sym(&self, sym: String) -> Register {
-        todo!()
-    }
-
-    pub fn load_num(&self, dest: Register, num: isize) -> Result<Offset, GeneratorError> {
-        let code = if (num as i16) < i16::MIN || i16::MAX < (num as i16) {
-            let literal_id = self.lit_num(num)?;
-
-            Opcode::LoadLiteral { dest, literal_id }
-        } else {
-            Opcode::LoadInteger { dest, integer: num as i16}
-        };
-
-        self.push_code(code)
-    }
-
-    pub fn load_nil(&self, dest: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::LoadNil { dest };
-
-        self.push_code(code)
-    }
-
-    pub fn jump(&self, offset: JumpOffset) -> Result<Offset, GeneratorError> {
-        let code = Opcode::Jump { offset };
-
-        self.push_code(code)
-    }
-
-    pub fn noop(&self) -> Result<Offset, GeneratorError> {
-        let code = Opcode::NoOp;
-
-        self.push_code(code)
-    }
-
-    pub fn gen_return(&self, reg: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::Return { reg };
-
-        self.push_code(code)
-    }
-
-    pub fn add(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::Add { dest, reg1, reg2 };
-
-        self.push_code(code)
-    }
-
-    pub fn sub(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::Add { dest, reg1, reg2 };
-
-        self.push_code(code)
-    }
-
-    pub fn mul(&self, dest: Register, reg1: Register, reg2: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::Multiply { dest, reg1, reg2 };
-
-        self.push_code(code)
-    }
-
-    pub fn div(&self, dest: Register, num: Register, denom: Register) -> Result<Offset, GeneratorError> {
-        let code = Opcode::DivideInteger { dest, num, denom };
-
-        self.push_code(code)
-    }
-
-    fn lit_num(&self, num: isize) -> Result<LiteralId, GeneratorError> {
-        // create a number object from an isize
-        // load the number object into the current bytecode
-        // return the literal id
-
-        todo!()
-    }
-
-    fn push_code(&self, code: Opcode) -> Result<Offset, GeneratorError> {
-        let func = self.top_func();
-
-        Ok(func.push_code(code, self.view)?)
-    }
-
-    fn top_func(&self) -> &FunctionGenerator {
-        self.func_stack.last().unwrap()
-    }
-}
-
-enum Binding {
-    Local(Register),
-    NonLocal(NonLocal),
-}
-
-struct Variable {
-    register: Register,
-    closed_over: Cell<bool>,
-}
-
-struct NonLocal {
-    upvalue_id: u8,
-    frame_offset: u8,
-    frame_register: u8,
-}
-
-struct FunctionGenerator {
-    next_reg: u8,
-    vars: HashMap<String, Variable>,
-    nonlocals: HashMap<String, NonLocal>,
+    parent: Option<&'parent Generator<'guard, 'parent>>,
     function: CellPtr<Function>,
+    bindings: HashMap<Var, Binding>,
+    registers: [Option<Var>; 256],
 }
 
-impl FunctionGenerator {
-    fn new(function: CellPtr<Function>) -> FunctionGenerator {
-        FunctionGenerator {
-            next_reg: 0,
-            vars: HashMap::new(),
-            nonlocals: HashMap::new(),
-            function,
+impl<'guard, 'parent> Generator<'guard, 'parent> {
+    fn alloc(
+        view: &'guard MutatorView<'guard>,
+        parent: Option<&'parent Generator<'guard, 'parent>>,
+    ) -> Result<Generator<'guard, 'parent>, RuntimeError> {
+        //let args = CellPtr::from(List::alloc(view)?);
+        let function = CellPtr::from(Function::default_alloc(view)?);
+        let bindings = HashMap::new();
+        let registers = [None; 256];
+
+        Ok(Generator { view, parent, bindings, function, registers })
+    }
+
+    pub fn decl_var(&mut self, name: String) -> Var {
+        if let Value::Symbol(sym_id) = self.view.lookup_sym(&name).value() {
+            let var_kind = match self.parent {
+                None => VarKind::Global,
+                Some(_) => VarKind::Local,
+            };
+            let var = Var::Symbol(sym_id);
+
+            self.set_binding(var_kind);
+
+            var
+        } else {
+            unreachable!("lookup_sym always returns sym_id")
         }
     }
 
-    fn push_code<'guard>(&self, code: Opcode, view: &'guard MutatorView) -> Result<Offset, RuntimeError> {
-        let bytecode = self.function.get(view).code(view);
+    fn set_binding(&mut self, var_kind: VarKind) -> Binding {
+        todo!()
+    }
 
-        bytecode.push(view, code)?;
+    pub fn return_var(&mut self, dest: Var) {
+        todo!()
+    }
+
+    pub fn decl_func(&mut self) -> Result<Generator<'guard, 'parent>, RuntimeError> {
+        // alloc a func with this func as the parent
+        todo!()
+    }
+
+    pub fn load_num(&mut self, var: &mut Var, num: isize) {
+        let binding = self.bindings.get(var).unwrap();
+        let var_id = match var {
+            Var::Temp(id) => id,
+            Var::Symbol(id) => id,
+        };
+
+        if num < (i16::MIN as isize) || (i16::MAX as isize) < num {
+            // TODO: push a literal
+            // num might still fit into a tagged ptr
+            // otherwize we need a num object
+            todo!()
+        } else {
+            match binding.kind {
+                VarKind::Temp | VarKind::Local => {
+                    let code = Opcode::LoadInteger {
+                        dest: binding.register,
+                        integer: num as i16
+                    };
+                    self.push_code(code);
+                }
+                VarKind::Global => {
+                    let num_reg = self.bind_temp().register;
+                    let sym_reg = self.bind_temp().register;
+
+                    let load_int = Opcode::LoadInteger {
+                        dest: num_reg,
+                        integer: num as i16
+                    };
+
+                    // TODO: symbolId may be larger than u16 MAX 
+                    // in this case a load literal instruction would be needed
+                    // to load a taggedsymbolpointer
+                    let load_sym = Opcode::LoadSymbol {
+                        dest: sym_reg,
+                        symbol: *var_id as u16
+                    };
+
+                    let store_global = Opcode::StoreGlobal {
+                        src: num_reg,
+                        name: sym_reg,
+                    };
+
+
+                    self.push_code(load_int);
+                    self.push_code(load_sym);
+                    self.push_code(store_global);
+                }
+                VarKind::Upvalue {
+                    upvalue_id, frame_offset, frame_register
+                } => {
+                    todo!()
+                }
+            }
+        }
+    }
+
+    pub fn add(&mut self, dest: &mut Var, var1: &mut Var, var2: &mut Var) { 
+        match dest.kind {
+            VarKind::Temp | VarKind::Local { .. } => {
+                self.load(var1);
+                self.load(var2);
+
+                let code = Opcode::Add {
+                    dest: dest.register,
+                    reg1: var1.register,
+                    reg2: var2.register,
+                };
+
+                self.push_code(code);
+            }
+            _ => { todo!() }
+        }
+    }
+
+    fn load(&mut self, var: &mut Var) {
+        // should handle the code for loading in an upvalue or Global
+        // if they have yet to be loaded, and have not been 
+        todo!()
+    }
+
+    fn push_code(&self, code: Opcode) -> Result<Offset, RuntimeError> {
+        let bytecode = self.function.get(self.view).code(self.view);
+
+        bytecode.push(self.view, code)?;
 
         Ok(bytecode.last_instruction())
+    }
+
+    pub fn get_temp(&mut self) -> Var {
+        todo!()
     }
 }
