@@ -11,7 +11,7 @@ use crate::error::{err_eval, RuntimeError};
 use crate::function::{Function, Closure};
 use crate::list::List;
 use crate::memory::MutatorView;
-use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr};
+use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr, TaggedCellPtr};
 use crate::tagged_ptr::{TaggedPtr, Value};
 use crate::upvalue::{Upvalue, env_upvalue_lookup};
 use crate::callframe::{CallFrame, CallFrameList};
@@ -33,8 +33,6 @@ pub struct Thread {
     upvalues: CellPtr<Dict>,
     globals: CellPtr<Dict>,
     instr: CellPtr<InstructionStream>,
-    // arrays: ArrayTable,
-    // an array table or should the memory hold the array pointer?
 }
 
 impl Thread {
@@ -42,16 +40,13 @@ impl Thread {
         mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, Thread>, RuntimeError> {
         let frames = CallFrameList::alloc_with_capacity(mem, 16)?;
-
         let stack = List::alloc_with_capacity(mem, 256)?;
-        stack.fill(mem, 256, mem.nil())?;
-
         let upvalues = Dict::alloc(mem)?;
-
         let globals = Dict::alloc(mem)?;
-
         let blank_code = ByteCode::alloc(mem)?;
         let instr = InstructionStream::alloc(mem, blank_code)?;
+
+        stack.fill(mem, 256, mem.nil())?;
 
         mem.alloc(Thread {
             frames: CellPtr::new_with(frames),
@@ -292,7 +287,9 @@ impl Thread {
 
                         // Create a new call frame, pushing it to the frame stack
                         let new_stack_base = self.stack_base.get() + dest as ArraySize;
-                        let frame = CallFrame::new(function, 0, new_stack_base);
+                        let overflow = List::alloc(mem)?;
+
+                        let frame = CallFrame::new(function, 0, new_stack_base, mem)?;
                         frames.push(mem, frame)?;
 
                         // Update the instruction stream to point to the new function
@@ -423,6 +420,21 @@ impl Thread {
                         }
                     }
                 }
+
+                Opcode::LoadOverflow { dest, overflow_id } => {
+                    let frame = frames.top(mem)?;
+                    let overflow = frame.overflow(mem).unwrap();
+                    let value = overflow.get(mem, overflow_id as u32)?;
+
+                    window[dest as usize].set_to_ptr(value.get_ptr());
+                }
+                Opcode::StoreOverflow { overflow_id, src } => {
+                    let frame = frames.top(mem)?;
+                    let overflow = frame.overflow(mem).unwrap();
+                    let value = window[src as usize].get(mem);
+
+                    overflow.set(mem, overflow_id as u32, TaggedCellPtr::new_with(value))?;
+                }
             }
 
             Ok(EvalStatus::Pending)
@@ -430,17 +442,11 @@ impl Thread {
     }
 
     // Given ByteCode, execute up to max_instr more instructions
-    fn vm_eval_stream<'guard>(
+    pub fn eval_stream<'guard>(
         &self,
         mem: &'guard MutatorView,
-        code: ScopedPtr<'guard, ByteCode>,
         max_instr: ArraySize,
     ) -> Result<EvalStatus<'guard>, RuntimeError> {
-        let instr = self.instr.get(mem);
-        // TODO this is broken logic, this function shouldn't switch back to this code object every
-        // time it is called
-        instr.switch_frame(code, 0);
-
         for _ in 0..max_instr {
             match self.eval_next_instr(mem) {
                 // Evaluation paused or completed without error
@@ -487,12 +493,14 @@ impl Thread {
         let mut status = EvalStatus::Pending;
 
         let frames = self.frames.get(mem);
-        frames.push(mem, CallFrame::new_main(function))?;
+        let main_frame = CallFrame::new_main(function, mem)?;
 
-        let code = function.code(mem);
+        self.set_func(mem, function);
+
+        frames.push(mem, main_frame)?;
 
         while status == EvalStatus::Pending {
-            status = self.vm_eval_stream(mem, code, 1024)?;
+            status = self.eval_stream(mem, 1024)?;
             match status {
                 EvalStatus::Return(value) => return Ok(value),
                 _ => (),
@@ -500,6 +508,16 @@ impl Thread {
         }
 
         Err(err_eval("Unexpected end of evaluation"))
+    }
+
+    pub fn set_func<'guard>(
+        &self,
+        mem: &'guard MutatorView,
+        function: ScopedPtr<'guard, Function>,
+    ) {
+        let code = function.code(mem);
+        let instr = self.instr.get(mem);
+        instr.switch_frame(code, 0);
     }
 }
 
@@ -522,7 +540,8 @@ mod test {
             nil_ptr,
             list,
             bytecode,
-            None
+            None,
+            0
         ).unwrap();
 
         thread.quick_vm_eval(view, function)

@@ -24,6 +24,8 @@ pub struct Function {
     // declaration where nonlocal variables will be found. Needed when creating a closure. May be
     // nil
     nonlocal_refs: TaggedCellPtr,
+
+    overflow_capacity: u16,
 }
 
 impl Function {
@@ -38,6 +40,7 @@ impl Function {
         param_names: ScopedPtr<'guard, List>,
         code: ScopedPtr<'guard, ByteCode>,
         nonlocal_refs: Option<ScopedPtr<'guard, ArrayU16>>,
+        overflow_capacity: u16,
     ) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {
         // Store a nil ptr if no nonlocal references are given
         let nonlocal_refs = if let Some(refs_ptr) = nonlocal_refs {
@@ -52,23 +55,20 @@ impl Function {
             code: CellPtr::new_with(code),
             param_names: CellPtr::new_with(param_names),
             nonlocal_refs,
+            overflow_capacity,
         })
     }
 
     pub fn default_alloc<'guard>(
         mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {
-        let nil_ptr = TaggedScopedPtr::new(mem, TaggedPtr::nil());
-        let param_names = List::alloc(mem)?;
-        let code = ByteCode::alloc(mem)?;
-        let nonlocal_refs = TaggedCellPtr::new_nil();
-
         mem.alloc(Function {
-            name: TaggedCellPtr::new_with(nil_ptr),
+            name: TaggedCellPtr::new_nil(),
             arity: 0,
-            code: CellPtr::new_with(code),
-            param_names: CellPtr::new_with(param_names),
-            nonlocal_refs,
+            code: CellPtr::new_with(ByteCode::alloc(mem)?),
+            param_names: CellPtr::new_with(List::alloc(mem)?),
+            nonlocal_refs: TaggedCellPtr::new_nil(),
+            overflow_capacity: 0,
         })
     }
 
@@ -103,6 +103,10 @@ impl Function {
             Value::ArrayU16(nonlocals) => nonlocals,
             _ => unreachable!(),
         }
+    }
+
+    pub fn overflow_capacity(&self) -> u16 {
+        self.overflow_capacity
     }
 }
 

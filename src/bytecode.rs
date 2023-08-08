@@ -14,17 +14,13 @@ use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr};
 use crate::tagged_ptr::TaggedPtr;
 
 pub type Register = u8;
-
 pub type LiteralInteger = i16;
 pub type LiteralSymbol = u16;
-
 pub type LiteralId = u16;
-
+pub type OverflowId = u16;
 pub type UpvalueId = u8;
-
 pub type JumpOffset = i16;
 pub const JUMP_UNKNOWN: i16 = 0x7fff;
-
 pub type NumArgs = u8;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
@@ -126,6 +122,14 @@ pub enum Opcode {
         reg2: Register,
         reg3: Register,
     },
+    LoadOverflow {
+        dest: Register,
+        overflow_id: OverflowId,
+    },
+    StoreOverflow {
+        overflow_id: OverflowId,
+        src: Register,
+    }
 }
 
 pub type ArrayOpcode = Array<Opcode>;

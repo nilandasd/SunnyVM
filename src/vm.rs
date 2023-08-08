@@ -5,7 +5,7 @@ use crate::error::RuntimeError;
 use crate::memory::{MutatorView, Mutator};
 use crate::generator::{Generator, MetaGenerator, Compiler};
 use crate::safe_ptr::CellPtr;
-use crate::thread::Thread;
+use crate::thread::{Thread, EvalStatus};
 
 // Sunny VM ☀️
 
@@ -41,11 +41,16 @@ impl Mutator for SVM {
         view: &MutatorView,
         thread: Self::Input,
     ) -> Result<Self::Output, RuntimeError> {
-        // run thread until GC trigger,
-        // collect roots (a bunch of CellPtrs
-        //  pass roots to the memory GC
-        // continue running thread
-        todo!()
+        loop {
+            let eval_status = thread.get(view).eval_stream(view, 1024)?;
+
+            match eval_status {
+                EvalStatus::Pending => {},
+                EvalStatus::Return(_) => {break;},
+            }
+        }
+
+        Ok(())
     }
 }
 
@@ -57,14 +62,15 @@ mod test {
 
     impl Compiler for AddTestCompiler {
         fn compile<'guard>(self, gen: &mut Generator) -> Result<(), ()> {
-            let mut foo = gen.decl_var("foo".to_string());
-            gen.load_num(&mut foo, 1);
-            let mut bar = gen.decl_var("bar".to_string());
+            let foo = gen.decl_var("foo".to_string());
+            let bar = gen.decl_var("bar".to_string());
+            let temp = gen.get_temp();
+
+            gen.load_num(foo, 1);
             gen.load_num(bar, 1);
-            let mut temp = gen.get_temp();
-            gen.add(temp, &mut bar, &mut foo);
-            gen.add(temp, &mut bar, &mut foo);
-            gen.return_var(temp);
+            gen.add(temp, bar, foo);
+            gen.gen_return(temp);
+
             Ok(())
         }
     }
