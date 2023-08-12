@@ -2,7 +2,7 @@ use zapalloc::{
     AllocHeader, AllocObject, AllocRaw, AllocTypeId, ArraySize, Mark, RawPtr, SizeClass,
 };
 
-use crate::array::{ArrayU16, ArrayU32, ArrayU8};
+use crate::array::{ArrayU16, ArrayU32, ArrayU8, ArrayU64};
 use crate::bytecode::{ArrayOpcode, ByteCode, InstructionStream};
 use crate::dict::Dict;
 use crate::function::{Function, Closure};
@@ -24,6 +24,7 @@ pub enum TypeList {
     ArrayU8,
     ArrayU16,
     ArrayU32,
+    ArrayU64,
     ByteCode,
     CallFrameList,
     Dict,
@@ -59,6 +60,7 @@ impl ObjectHeader {
             TypeList::ArrayU8 => FatPtr::ArrayU8(RawPtr::untag(object_addr.cast::<ArrayU8>())),
             TypeList::ArrayU16 => FatPtr::ArrayU16(RawPtr::untag(object_addr.cast::<ArrayU16>())),
             TypeList::ArrayU32 => FatPtr::ArrayU32(RawPtr::untag(object_addr.cast::<ArrayU32>())),
+            TypeList::ArrayU64 => FatPtr::ArrayU64(RawPtr::untag(object_addr.cast::<ArrayU64>())),
             TypeList::Dict => FatPtr::Dict(RawPtr::untag(object_addr.cast::<Dict>())),
             TypeList::Function => FatPtr::Function(RawPtr::untag(object_addr.cast::<Function>())),
             TypeList::Closure => FatPtr::Closure(RawPtr::untag(object_addr.cast::<Closure>())),
@@ -135,6 +137,7 @@ declare_allocobject!(ArrayOpcode, ArrayOpcode);
 declare_allocobject!(ArrayU8, ArrayU8);
 declare_allocobject!(ArrayU16, ArrayU16);
 declare_allocobject!(ArrayU32, ArrayU32);
+declare_allocobject!(ArrayU64, ArrayU64);
 declare_allocobject!(ByteCode, ByteCode);
 declare_allocobject!(CallFrameList, CallFrameList);
 declare_allocobject!(Dict, Dict);

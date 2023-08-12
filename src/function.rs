@@ -9,7 +9,7 @@ use crate::list::List;
 use crate::memory::MutatorView;
 use crate::printer::Print;
 use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
-use crate::tagged_ptr::{Value, TaggedPtr};
+use crate::tagged_ptr::Value;
 
 #[derive(Clone)]
 pub struct Function {

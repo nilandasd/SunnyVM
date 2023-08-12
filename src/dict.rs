@@ -14,15 +14,13 @@ use crate::tagged_ptr::Value;
 const LOAD_FACTOR: f32 = 0.80;
 const TOMBSTONE: u64 = 1;
 
-/// Internal entry representation, keeping copy of hash for the key
-// ANCHOR: DefDictItem
+// Internal entry representation, keeping copy of hash for the key
 #[derive(Clone)]
 pub struct DictItem {
     key: TaggedCellPtr,
     value: TaggedCellPtr,
     hash: u64,
 }
-// ANCHOR_END: DefDictItem
 
 impl DictItem {
     fn blank() -> DictItem {
@@ -40,6 +38,7 @@ fn hash_key<'guard>(
     key: TaggedScopedPtr<'guard>,
 ) -> Result<u64, RuntimeError> {
     match *key {
+        Value::Symbol(sym_id) => Ok(sym_id as u64),
         Value::Number(n) => Ok(n as u64),
         _ => Err(RuntimeError::new(ErrorKind::UnhashableError)),
     }

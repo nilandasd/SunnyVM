@@ -15,6 +15,7 @@ use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr, TaggedC
 use crate::tagged_ptr::{TaggedPtr, Value};
 use crate::upvalue::{Upvalue, env_upvalue_lookup};
 use crate::callframe::{CallFrame, CallFrameList};
+use crate::number::{NumberObject, TAG_NUM_MAX, TAG_NUM_MIN};
 
 pub const RETURN_REG: usize = 0;
 pub const ENV_REG: usize = 1;
@@ -377,8 +378,33 @@ impl Thread {
                     window[dest as usize] = window[src as usize].clone();
                 }
 
-                // TODO
                 Opcode::Add { dest, reg1, reg2 } => {
+                    let val1 = window[reg1 as usize].get(mem).value();
+                    let val2 = window[reg2 as usize].get(mem).value();
+
+                    match (val1, val2) {
+                        (Value::NumberObject(num_obj1), Value::NumberObject(num_obj2)) => {
+                            todo!()
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj)) | 
+                         (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            todo!()
+                        }
+                        (Value::Number(num1), Value::Number(num2)) => {
+                            let result = num1 + num2;
+
+                            let tagged_result = if result < TAG_NUM_MIN || TAG_NUM_MAX < result {
+                                let num_obj = NumberObject::alloc(result, mem)?;
+
+                                num_obj.as_tagged(mem).get_ptr()
+                            } else {
+                                TaggedPtr::number(result)
+                            };
+
+                            window[dest as usize].set_to_ptr(tagged_result);
+                        }
+                        _ => {unimplemented!("have yet to implement add for non number types")}
+                    }
 
                 },
 

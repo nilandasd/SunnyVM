@@ -354,6 +354,18 @@ impl Print for ArrayU32 {
     }
 }
 
+pub type ArrayU64 = Array<u64>;
+
+impl Print for ArrayU64 {
+    fn print<'guard>(
+        &self,
+        _guard: &'guard dyn MutatorScope,
+        f: &mut fmt::Formatter,
+    ) -> fmt::Result {
+        write!(f, "ArrayU64[...]")
+    }
+}
+
 impl FillAnyContainer for Array<TaggedCellPtr> {
     fn fill<'guard>(
         &self,

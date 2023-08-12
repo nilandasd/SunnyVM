@@ -3,13 +3,13 @@ use std::ptr::NonNull;
 
 use zapalloc::{AllocRaw, RawPtr};
 
-use crate::array::{ArrayU16, ArrayU32, ArrayU8};
+use crate::array::{ArrayU8, ArrayU16, ArrayU32, ArrayU64};
 use crate::dict::Dict;
 use crate::function::{Function, Closure};
 use crate::list::List;
 use crate::memory::{HeapStorage, SymbolId};
 use crate::number::NumberObject;
-use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_LIST, TAG_SYMBOL};
+use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_SYMBOL};
 use crate::printer::Print;
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
 use crate::text::Text;
@@ -20,6 +20,7 @@ pub enum Value<'guard> {
     ArrayU8(ScopedPtr<'guard, ArrayU8>),
     ArrayU16(ScopedPtr<'guard, ArrayU16>),
     ArrayU32(ScopedPtr<'guard, ArrayU32>),
+    ArrayU64(ScopedPtr<'guard, ArrayU64>),
     Dict(ScopedPtr<'guard, Dict>),
     Function(ScopedPtr<'guard, Function>),
     Closure(ScopedPtr<'guard, Closure>),
@@ -43,6 +44,7 @@ impl<'guard> fmt::Display for Value<'guard> {
             Value::ArrayU8(a) => a.print(self, f),
             Value::ArrayU16(a) => a.print(self, f),
             Value::ArrayU32(a) => a.print(self, f),
+            Value::ArrayU64(a) => a.print(self, f),
             Value::Dict(d) => d.print(self, f),
             Value::Function(n) => n.print(self, f),
             Value::Closure(n) => n.print(self, f),
@@ -58,6 +60,7 @@ impl<'guard> fmt::Debug for Value<'guard> {
             Value::ArrayU8(a) => a.debug(self, f),
             Value::ArrayU16(a) => a.debug(self, f),
             Value::ArrayU32(a) => a.debug(self, f),
+            Value::ArrayU64(a) => a.debug(self, f),
             Value::Dict(d) => d.debug(self, f),
             Value::Function(n) => n.debug(self, f),
             Value::List(a) => a.debug(self, f),
@@ -78,6 +81,7 @@ pub enum FatPtr {
     ArrayU8(RawPtr<ArrayU8>),
     ArrayU16(RawPtr<ArrayU16>),
     ArrayU32(RawPtr<ArrayU32>),
+    ArrayU64(RawPtr<ArrayU64>),
     Dict(RawPtr<Dict>),
     Function(RawPtr<Function>),
     Closure(RawPtr<Closure>),
@@ -101,6 +105,9 @@ impl FatPtr {
             }
             FatPtr::ArrayU32(raw_ptr) => {
                 Value::ArrayU32(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
+            }
+            FatPtr::ArrayU64(raw_ptr) => {
+                Value::ArrayU64(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
             }
             FatPtr::Dict(raw_ptr) => Value::Dict(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard))),
             FatPtr::Function(raw_ptr) => {
@@ -138,6 +145,7 @@ macro_rules! fatptr_from_rawptr {
 fatptr_from_rawptr!(ArrayU8, ArrayU8);
 fatptr_from_rawptr!(ArrayU16, ArrayU16);
 fatptr_from_rawptr!(ArrayU32, ArrayU32);
+fatptr_from_rawptr!(ArrayU64, ArrayU64);
 fatptr_from_rawptr!(Dict, Dict);
 fatptr_from_rawptr!(Function, Function);
 fatptr_from_rawptr!(List, List);
@@ -177,7 +185,6 @@ pub union TaggedPtr {
     tag: usize,
     number: isize,
     symbol: SymbolId,
-    list: NonNull<List>,
     object: NonNull<()>,
 }
 
@@ -193,12 +200,6 @@ impl TaggedPtr {
     pub fn object<T>(ptr: RawPtr<T>) -> TaggedPtr {
         TaggedPtr {
             object: ptr.tag(TAG_OBJECT).cast::<()>(),
-        }
-    }
-
-    fn list(ptr: RawPtr<List>) -> TaggedPtr {
-        TaggedPtr {
-            list: ptr.tag(TAG_LIST),
         }
     }
 
@@ -234,7 +235,6 @@ impl TaggedPtr {
                 match get_tag(self.tag) {
                     TAG_NUMBER => FatPtr::Number(self.number >> 2),
                     TAG_SYMBOL => FatPtr::Symbol(self.symbol >> 2),
-                    TAG_LIST => FatPtr::List(RawPtr::untag(self.list)),
                     TAG_OBJECT => {
                         let untyped_object_ptr = RawPtr::untag(self.object).as_untyped();
                         let header_ptr = HeapStorage::get_header(untyped_object_ptr);
@@ -255,10 +255,11 @@ impl From<FatPtr> for TaggedPtr {
             FatPtr::ArrayU8(raw) => TaggedPtr::object(raw),
             FatPtr::ArrayU16(raw) => TaggedPtr::object(raw),
             FatPtr::ArrayU32(raw) => TaggedPtr::object(raw),
+            FatPtr::ArrayU64(raw) => TaggedPtr::object(raw),
             FatPtr::Dict(raw) => TaggedPtr::object(raw),
             FatPtr::Function(raw) => TaggedPtr::object(raw),
             FatPtr::Closure(raw) => TaggedPtr::object(raw),
-            FatPtr::List(raw) => TaggedPtr::list(raw),
+            FatPtr::List(raw) => TaggedPtr::object(raw),
             FatPtr::Nil => TaggedPtr::nil(),
             FatPtr::Number(value) => TaggedPtr::number(value),
             FatPtr::Symbol(value) => TaggedPtr::symbol(value),
