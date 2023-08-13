@@ -394,7 +394,7 @@ impl Thread {
                             let result = num1 + num2;
 
                             let tagged_result = if result < TAG_NUM_MIN || TAG_NUM_MAX < result {
-                                let num_obj = NumberObject::alloc(result, mem)?;
+                                let num_obj = NumberObject::alloc_from_isize(result, mem)?;
 
                                 num_obj.as_tagged(mem).get_ptr()
                             } else {

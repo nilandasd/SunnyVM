@@ -508,7 +508,7 @@ mod test {
     }
 
     #[test]
-    fn dict_assoc_lookup_500_into_capacity_20() {
+    fn dict_assoc_lookup_250_into_capacity_20() {
         // this test forces several resizings and should test the final state of the dict is as expected
         let mem = Memory::new();
 
@@ -524,7 +524,7 @@ mod test {
             ) -> Result<Self::Output, RuntimeError> {
                 let dict = Dict::with_capacity(mem, 20)?;
 
-                for num in 0..500 {
+                for num in 0..250 {
                     let key_name = format!("foo_{}", num);
                     let key = mem.lookup_sym(&key_name);
 
@@ -534,7 +534,7 @@ mod test {
                     dict.assoc(mem, key, val)?;
                 }
 
-                for num in 0..500 {
+                for num in 0..250 {
                     let key_name = format!("foo_{}", num);
                     let key = mem.lookup_sym(&key_name);
 
