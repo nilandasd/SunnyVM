@@ -176,33 +176,31 @@ impl NumberObject {
         let mut carry_flag = false;
         let mut index = 0;
 
-        while index < rhs_len || index < lhs_len || carry_flag {
-            let lhs_val = if index < lhs_len {
-                (*lhs_data).get(mem, index)?
-            } else {
-                0
-            };
-
+        while index < lhs_len {
+            let lhs_val = (*lhs_data).get(mem, index)?;
             let rhs_val = if index < rhs_len {
                 (*rhs_data).get(mem, index)?
             } else {
                 0
             };
 
-            let mut temp: u128 = (rhs_val + lhs_val) as u128;
+            let mut temp: i128 = (lhs_val - rhs_val) as i128;
 
             if carry_flag {
-                temp += 1;
+                temp -= 1;
             }
 
             match u64::try_from(temp) {
                 Ok(n) => {
-                    result_data.push(mem, n)?;
-                    carry_flag = false;
+                    if !((n == 0) && (index == (lhs_len - 1))) {
+                        result_data.push(mem, n)?;
+                        carry_flag = false;
+                    }
                 }
                 Err(_) => {
-                    // TODO: maybe a bit mask might be faster
-                    let n = ((temp as u64) - u64::MAX) as u64;
+                    let n = u64::try_from(
+                        temp + (u64::MAX as i128)
+                    ).unwrap();
                     result_data.push(mem, n)?;
                     carry_flag = true;
                 } 
