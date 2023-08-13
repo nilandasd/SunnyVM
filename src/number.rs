@@ -18,6 +18,12 @@ pub struct NumberObject {
     negative: Cell<bool>,
 }
 
+enum Cmp {
+    Greater,
+    Equal,
+    Less,
+}
+
 impl NumberObject {
     pub fn alloc_from_isize<'guard>(
         integer: isize,
@@ -79,60 +85,40 @@ impl NumberObject {
         rhs: &NumberObject,
         mem: &'guard MutatorView
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
-        if self.unsigned_gt(rhs, mem)? {
-            let result = self.unsigned_sub(rhs, mem)?;
-            result.negative.set(self.negative.get());
-            Ok(result)
-        } else if self.unsigned_eq(rhs, mem)? {
-            Ok(NumberObject::alloc_from_isize(0, mem)?)
-        } else {
-            let result = rhs.unsigned_sub(self, mem)?;
-            result.negative.set(rhs.negative.get());
-            Ok(result)
+        match self.unsigned_cmp(rhs, mem)? {
+            Cmp::Greater => {
+                let result = self.unsigned_sub(rhs, mem)?;
+                result.negative.set(self.negative.get());
+                Ok(result)
+            }
+            Cmp::Equal => {
+                Ok(NumberObject::alloc_from_isize(0, mem)?)
+            }
+            Cmp::Less => {
+                let result = rhs.unsigned_sub(self, mem)?;
+                result.negative.set(rhs.negative.get());
+                Ok(result)
+            }
         }
-    }
-
-    fn unsigned_gte<'guard>(
-        &self,
-        rhs: &NumberObject,
-        mem: &'guard MutatorView
-    ) -> Result<bool, RuntimeError> {
-        let lhs_data = self.data.get(mem);
-        let rhs_data = rhs.data.get(mem);
-        let lhs_len = lhs_data.length();
-        let rhs_len = rhs_data.length();
-
-        if lhs_len != rhs_len {
-            return Ok(lhs_len < rhs_len);
-        }
-
-        if lhs_len > rhs_len {
-            return Ok(true);
-        }
-
-        Ok(
-            self.unsigned_gt(rhs, mem)? ||
-            self.unsigned_eq(rhs, mem)?
-        )
     }
 
     // returns true if self is greater than rhs, not accounting the sign
-    fn unsigned_gt<'guard>(
+    fn unsigned_cmp<'guard>(
         &self,
         rhs: &NumberObject,
         mem: &'guard MutatorView
-    ) -> Result<bool, RuntimeError> {
+    ) -> Result<Cmp, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
         let lhs_len = lhs_data.length();
         let rhs_len = rhs_data.length();
 
         if lhs_len < rhs_len {
-            return Ok(false);
+            return Ok(Cmp::Less);
         }
 
         if lhs_len > rhs_len {
-            return Ok(true);
+            return Ok(Cmp::Greater);
         }
 
         for index in (0..lhs_len).rev() {
@@ -140,41 +126,15 @@ impl NumberObject {
             let rhs_val = (*rhs_data).get(mem, index)?;
 
             if lhs_val < rhs_val {
-                return Ok(false);
+                return Ok(Cmp::Less);
             }
             if lhs_val > rhs_val {
-                return Ok(true);
+                return Ok(Cmp::Greater);
             }
         }
 
         // they are equal
-        return Ok(false);
-    }
-
-    fn unsigned_eq<'guard>(
-        &self,
-        rhs: &NumberObject,
-        mem: &'guard MutatorView
-    ) -> Result<bool, RuntimeError> {
-        let lhs_data = self.data.get(mem);
-        let rhs_data = rhs.data.get(mem);
-        let lhs_len = lhs_data.length();
-        let rhs_len = rhs_data.length();
-
-        if lhs_len != rhs_len {
-            return Ok(false);
-        }
-
-        for index in 0..lhs_len {
-            let lhs_val = (*lhs_data).get(mem, index)?;
-            let rhs_val = (*rhs_data).get(mem, index)?;
-
-            if lhs_val != rhs_val {
-                return Ok(false);
-            }
-        }
-
-        return Ok(true);
+        return Ok(Cmp::Equal);
     }
 
     // lhs is guaranteed to be greater than rhs, otherwise undefined
