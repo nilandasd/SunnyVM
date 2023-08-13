@@ -92,14 +92,18 @@ impl NumberObject {
         }
     }
 
-    fn unsigned_gte<'guard>(&self, rhs: &NumberObject, mem: &'guard MutatorView) -> Result<bool, RuntimeError> {
+    fn unsigned_gte<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<bool, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
         let lhs_len = lhs_data.length();
         let rhs_len = rhs_data.length();
 
-        if lhs_len < rhs_len {
-            return Ok(false);
+        if lhs_len != rhs_len {
+            return Ok(lhs_len < rhs_len);
         }
 
         if lhs_len > rhs_len {
@@ -113,7 +117,11 @@ impl NumberObject {
     }
 
     // returns true if self is greater than rhs, not accounting the sign
-    fn unsigned_gt<'guard>(&self, rhs: &NumberObject, mem: &'guard MutatorView) -> Result<bool, RuntimeError> {
+    fn unsigned_gt<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<bool, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
         let lhs_len = lhs_data.length();
@@ -143,7 +151,11 @@ impl NumberObject {
         return Ok(false);
     }
 
-    fn unsigned_eq<'guard>(&self, rhs: &NumberObject, mem: &'guard MutatorView) -> Result<bool, RuntimeError> {
+    fn unsigned_eq<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<bool, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
         let lhs_len = lhs_data.length();
@@ -166,7 +178,11 @@ impl NumberObject {
     }
 
     // lhs is guaranteed to be greater than rhs, otherwise undefined
-    fn unsigned_sub<'guard>(&self, rhs: &NumberObject, mem: &'guard MutatorView) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
+    fn unsigned_sub<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         let result_obj = NumberObject::alloc_from_isize(0, mem)?;
         let result_data = result_obj.data.get(mem);
         let lhs_data = self.data.get(mem);
@@ -212,7 +228,11 @@ impl NumberObject {
         Ok(result_obj)
     }
 
-    fn unsigned_add<'guard>(&self, rhs: &NumberObject, mem: &'guard MutatorView) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
+    fn unsigned_add<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         let result_obj = NumberObject::alloc_from_isize(0, mem)?;
         let result_data = result_obj.data.get(mem);
         let lhs_data = self.data.get(mem);
