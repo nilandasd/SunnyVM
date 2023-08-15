@@ -500,6 +500,7 @@ impl Thread {
 
                     window[dest as usize].set_to_ptr(value.get_ptr());
                 }
+
                 Opcode::StoreOverflow { overflow_id, src } => {
                     let frame = frames.top(mem)?;
                     let overflow = frame.overflow(mem).unwrap();
@@ -580,14 +581,38 @@ impl Thread {
         Err(err_eval("Unexpected end of evaluation"))
     }
 
+    // identical to quick vm eval but doesn't take a function
+    pub fn execute<'guard>(
+        &self,
+        mem: &'guard MutatorView,
+    ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
+        let mut status = EvalStatus::Pending;
+
+        while status == EvalStatus::Pending {
+            status = self.eval_stream(mem, 1024)?;
+            match status {
+                EvalStatus::Return(value) => return Ok(value),
+                _ => (),
+            }
+        }
+
+        Err(err_eval("Unexpected end of evaluation"))
+    }
+
     pub fn set_func<'guard>(
         &self,
         mem: &'guard MutatorView,
         function: ScopedPtr<'guard, Function>,
-    ) {
+    ) -> Result<(), RuntimeError> {
         let code = function.code(mem);
         let instr = self.instr.get(mem);
+        let frames = self.frames.get(mem);
+        let main_frame = CallFrame::new_main(function, mem)?;
+
+        frames.push(mem, main_frame)?;
         instr.switch_frame(code, 0);
+
+        Ok(())
     }
 }
 

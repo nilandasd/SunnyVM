@@ -338,19 +338,27 @@ mod test {
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
                 let zero = NumberObject::alloc_from_isize(0, mem)?;
-                let a = NumberObject::alloc_from_isize(isize::MAX, mem)?;
-                let b = a.add(&a, mem)?; // max * 2
-                let c = b.add(&b, mem)?; // max * 4
-                let d = c.sub(&b, mem)?; // max * 2
-                let e = zero.sub(&b, mem)?; // max * 2 * -1
-                let f = e.add(&b, mem)?; // 0
+                let one = NumberObject::alloc_from_isize(isize::MAX, mem)?;
+                let two = one.add(&one, mem)?; // max * 2
+                let three = two.add(&one, mem)?; // max * 3
+                let four = three.add(&one, mem)?; // max * 4
+                let minus_two = two.sub(&four, mem)?; // max * 2 * -1
+                let zero2 = two.add(&minus_two, mem)?; // 0
                                          
-                assert!(NumObjRelation::Less == a.cmp(&b, mem)?);
-                assert!(NumObjRelation::Less == b.cmp(&c, mem)?);
-                assert!(NumObjRelation::Equal == b.cmp(&d, mem)?);
-                assert!(NumObjRelation::Less == zero.cmp(&b, mem)?);
-                assert!(e.negative.get());
-                assert!(NumObjRelation::Equal == zero.cmp(&f, mem)?);
+                assert!(NumObjRelation::Less == minus_two.cmp(&one, mem)?);
+                assert!(NumObjRelation::Less == zero.cmp(&one, mem)?);
+                assert!(NumObjRelation::Less == one.cmp(&two, mem)?);
+                assert!(NumObjRelation::Less == two.cmp(&three, mem)?);
+                assert!(NumObjRelation::Less == three.cmp(&four, mem)?);
+                assert!(NumObjRelation::Equal == zero.cmp(&zero2, mem)?);
+                assert!(NumObjRelation::Greater == zero.cmp(&minus_two, mem)?);
+                assert!(NumObjRelation::Greater == one.cmp(&zero, mem)?);
+                assert!(NumObjRelation::Greater == two.cmp(&one, mem)?);
+                assert!(NumObjRelation::Greater == three.cmp(&two, mem)?);
+                assert!(NumObjRelation::Greater == four.cmp(&three, mem)?);
+
+                assert!(minus_two.negative.get());
+
                 Ok(())
             }
         }

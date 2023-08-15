@@ -4,51 +4,50 @@ use crate::memory::Memory;
 use crate::error::RuntimeError;
 use crate::memory::{MutatorView, Mutator};
 use crate::generator::{Generator, MetaGenerator, Compiler};
-use crate::safe_ptr::CellPtr;
+use crate::safe_ptr::{CellPtr, ScopedPtr};
 use crate::thread::{Thread, EvalStatus};
 
 // Sunny VM ☀️
 
 pub struct SVM {
     memory: Memory,
+    thread: Option<CellPtr<Thread>>,
 }
 
 impl SVM {
     pub fn new() -> SVM {
         SVM {
             memory: Memory::new(),
+            thread: None,
         }
     }
 
-    pub fn compile<T: Compiler>(&mut self, compiler: T) -> Result<CellPtr<Thread>, RuntimeError> {
+    pub fn compile<T: Compiler>(&mut self, compiler: T) -> Result<(), RuntimeError> {
         let meta_gen = MetaGenerator::<T>::new();
-        let thread = self.memory.mutate(&meta_gen, compiler);
+        let thread = self.memory.mutate(&meta_gen, compiler)?;
 
-        thread
+        self.thread = Some(thread);
+
+        Ok(())
     }
 
-    pub fn execute(&mut self, thread: CellPtr<Thread>) -> Result<(), RuntimeError> {
-        self.memory.mutate(self, thread)
+    pub fn execute(&mut self) -> Result<(), RuntimeError> {
+        self.memory.mutate(self, ())
     }
 }
 
 impl Mutator for SVM {
-    type Input = CellPtr<Thread>;
+    type Input = ();
     type Output = ();
 
     fn run(
         &self,
         view: &MutatorView,
-        thread: Self::Input,
+        _input: Self::Input,
     ) -> Result<Self::Output, RuntimeError> {
-        loop {
-            let eval_status = thread.get(view).eval_stream(view, 1024)?;
+        let thread = self.thread.as_ref().unwrap().get(view);
 
-            match eval_status {
-                EvalStatus::Pending => {},
-                EvalStatus::Return(_) => {break;},
-            }
-        }
+        thread.execute(view)?;
 
         Ok(())
     }
@@ -81,7 +80,7 @@ mod test {
         let mut vm = SVM::new();
         let test_compiler = AddTestCompiler{};
 
-        let thread = vm.compile(test_compiler).expect("compiles");
-        vm.execute(thread).expect("no errors");
+        vm.compile(test_compiler).expect("compiles");
+        vm.execute().expect("no errors");
     }
 }
