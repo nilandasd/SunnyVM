@@ -18,7 +18,8 @@ pub struct NumberObject {
     negative: Cell<bool>,
 }
 
-enum Cmp {
+#[derive(PartialEq)]
+enum NumObjRelation {
     Greater,
     Equal,
     Less,
@@ -70,6 +71,29 @@ impl NumberObject {
         }
     }
 
+    pub fn cmp<'guard>(
+        &self,
+        rhs: &NumberObject,
+        mem: &'guard MutatorView
+    ) -> Result<NumObjRelation, RuntimeError> {
+        if self.negative.get() && !rhs.negative.get() {
+            Ok(NumObjRelation::Less)
+        } else if !self.negative.get() && rhs.negative.get() {
+            Ok(NumObjRelation::Greater)
+        } else if !self.negative.get() {
+            Ok(self.unsigned_cmp(rhs, mem)?)
+        } else {
+            match self.unsigned_cmp(rhs, mem)? {
+                NumObjRelation::Less =>
+                    Ok(NumObjRelation::Greater),
+                NumObjRelation::Greater =>
+                    Ok(NumObjRelation::Greater),
+                NumObjRelation::Equal =>
+                    Ok(NumObjRelation::Equal),
+            }
+        }
+    }
+
     fn logical_add<'guard>(
         &self,
         rhs: &NumberObject,
@@ -86,39 +110,38 @@ impl NumberObject {
         mem: &'guard MutatorView
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         match self.unsigned_cmp(rhs, mem)? {
-            Cmp::Greater => {
+            NumObjRelation::Greater => {
                 let result = self.unsigned_sub(rhs, mem)?;
                 result.negative.set(self.negative.get());
                 Ok(result)
             }
-            Cmp::Equal => {
+            NumObjRelation::Equal => {
                 Ok(NumberObject::alloc_from_isize(0, mem)?)
             }
-            Cmp::Less => {
+            NumObjRelation::Less => {
                 let result = rhs.unsigned_sub(self, mem)?;
-                result.negative.set(rhs.negative.get());
+                result.negative.set(!rhs.negative.get());
                 Ok(result)
             }
         }
     }
 
-    // returns true if self is greater than rhs, not accounting the sign
     fn unsigned_cmp<'guard>(
         &self,
         rhs: &NumberObject,
         mem: &'guard MutatorView
-    ) -> Result<Cmp, RuntimeError> {
+    ) -> Result<NumObjRelation, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
         let lhs_len = lhs_data.length();
         let rhs_len = rhs_data.length();
 
         if lhs_len < rhs_len {
-            return Ok(Cmp::Less);
+            return Ok(NumObjRelation::Less);
         }
 
         if lhs_len > rhs_len {
-            return Ok(Cmp::Greater);
+            return Ok(NumObjRelation::Greater);
         }
 
         for index in (0..lhs_len).rev() {
@@ -126,15 +149,14 @@ impl NumberObject {
             let rhs_val = (*rhs_data).get(mem, index)?;
 
             if lhs_val < rhs_val {
-                return Ok(Cmp::Less);
+                return Ok(NumObjRelation::Less);
             }
             if lhs_val > rhs_val {
-                return Ok(Cmp::Greater);
+                return Ok(NumObjRelation::Greater);
             }
         }
 
-        // they are equal
-        return Ok(Cmp::Equal);
+        return Ok(NumObjRelation::Equal);
     }
 
     // lhs is guaranteed to be greater than rhs, otherwise undefined
@@ -152,6 +174,8 @@ impl NumberObject {
         let mut carry_flag = false;
         let mut index = 0;
 
+        result_data.clear(mem)?;
+
         while index < lhs_len {
             let lhs_val = (*lhs_data).get(mem, index)?;
             let rhs_val = if index < rhs_len {
@@ -160,7 +184,7 @@ impl NumberObject {
                 0
             };
 
-            let mut temp: i128 = (lhs_val - rhs_val) as i128;
+            let mut temp: i128 = (lhs_val as i128) - (rhs_val as i128);
 
             if carry_flag {
                 temp -= 1;
@@ -202,6 +226,8 @@ impl NumberObject {
         let mut carry_flag = false;
         let mut index = 0;
 
+        result_data.clear(mem)?;
+
         while index < rhs_len || index < lhs_len || carry_flag {
             let lhs_val = if index < lhs_len {
                 (*lhs_data).get(mem, index)?
@@ -215,7 +241,7 @@ impl NumberObject {
                 0
             };
 
-            let mut temp: u128 = (rhs_val + lhs_val) as u128;
+            let mut temp: u128 = (rhs_val as u128) + (lhs_val as u128);
 
             if carry_flag {
                 temp += 1;
@@ -228,7 +254,7 @@ impl NumberObject {
                 }
                 Err(_) => {
                     // TODO: maybe a bit mask might be faster
-                    let n = ((temp as u64) - u64::MAX) as u64;
+                    let n = (temp - (u64::MAX as u128)) as u64;
                     result_data.push(mem, n)?;
                     carry_flag = true;
                 } 
@@ -244,9 +270,92 @@ impl NumberObject {
 impl Print for NumberObject {
     fn print<'guard>(
         &self,
-        _guard: &'guard dyn MutatorScope,
+        guard: &'guard dyn MutatorScope,
         f: &mut fmt::Formatter,
     ) -> fmt::Result {
-        write!(f, "NumberObject(nan)")
+        write!(f, "NumberObject: ");
+
+        unsafe {
+            for n in self.data.get(guard).as_slice(guard).iter().rev() {
+                write!(f, "{}\t", n);
+
+            }
+        }
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::error::RuntimeError;
+    use crate::memory::{Memory, Mutator, MutatorView};
+
+    #[test]
+    fn equality_comparison() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                mem: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+                let x = NumberObject::alloc_from_isize(69, mem)?;
+                let y = NumberObject::alloc_from_isize(69, mem)?;
+                let z = NumberObject::alloc_from_isize(420, mem)?;
+
+                assert!(NumObjRelation::Equal == z.cmp(&z, mem)?);
+                assert!(NumObjRelation::Equal == x.cmp(&y, mem)?);
+                assert!(NumObjRelation::Equal != x.cmp(&z, mem)?);
+
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        
+        mem.mutate(&test, ()).unwrap();
+    }
+
+    #[test]
+    fn addition_and_subtraction() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                mem: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+                let zero = NumberObject::alloc_from_isize(0, mem)?;
+                let a = NumberObject::alloc_from_isize(isize::MAX, mem)?;
+                let b = a.add(&a, mem)?; // max * 2
+                let c = b.add(&b, mem)?; // max * 4
+                let d = c.sub(&b, mem)?; // max * 2
+                let e = zero.sub(&b, mem)?; // max * 2 * -1
+                let f = e.add(&b, mem)?; // 0
+                                         
+                assert!(NumObjRelation::Less == a.cmp(&b, mem)?);
+                assert!(NumObjRelation::Less == b.cmp(&c, mem)?);
+                assert!(NumObjRelation::Equal == b.cmp(&d, mem)?);
+                assert!(NumObjRelation::Less == zero.cmp(&b, mem)?);
+                assert!(e.negative.get());
+                assert!(NumObjRelation::Equal == zero.cmp(&f, mem)?);
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        mem.mutate(&test, ()).unwrap();
     }
 }

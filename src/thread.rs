@@ -11,7 +11,9 @@ use crate::error::{err_eval, RuntimeError};
 use crate::function::{Function, Closure};
 use crate::list::List;
 use crate::memory::MutatorView;
-use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr, TaggedCellPtr};
+use crate::safe_ptr::{
+    CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr, TaggedCellPtr
+};
 use crate::tagged_ptr::{TaggedPtr, Value};
 use crate::upvalue::{Upvalue, env_upvalue_lookup};
 use crate::callframe::{CallFrame, CallFrameList};
@@ -68,7 +70,9 @@ impl Thread {
 
         // Convert the location integer to a TaggedScopedPtr for passing
         // into the Thread's upvalues Dict
-        let location_ptr = TaggedScopedPtr::new(guard, TaggedPtr::number(location as isize));
+        let location_ptr = TaggedScopedPtr::new(
+            guard, TaggedPtr::number(location as isize)
+        );
 
         // Lookup upvalue in upvalues dict
         match upvalues.lookup(guard, location_ptr) {
@@ -95,8 +99,9 @@ impl Thread {
             Err(_) => {
                 let upvalues = self.upvalues.get(mem);
                 let upvalue = Upvalue::alloc(mem, location)?;
-
-                let location_ptr = TaggedScopedPtr::new(mem, TaggedPtr::number(location as isize));
+                let location_ptr = TaggedScopedPtr::new(
+                    mem, TaggedPtr::number(location as isize)
+                );
                 upvalues.assoc(mem, location_ptr, upvalue.as_tagged(mem))?;
 
                 Ok((location_ptr, upvalue))
@@ -119,7 +124,6 @@ impl Thread {
         stack.access_slice(mem, |full_stack| {
             let stack_base = self.stack_base.get() as usize;
             let window = &mut full_stack[stack_base..stack_base + 256];
-
             let opcode = instr.get_next_opcode(mem)?;
 
             match opcode {
@@ -251,7 +255,9 @@ impl Thread {
                             }
                         }
                     } else {
-                        return Err(err_eval("Cannot lookup global for non-symbol type"));
+                        return Err(
+                            err_eval("Cannot lookup global for non-symbol type")
+                        );
                     }
                 }
 
@@ -261,11 +267,14 @@ impl Thread {
                         let src_val = window[src as usize].get(mem);
                         globals.assoc(mem, name_val, src_val)?;
                     } else {
-                        return Err(err_eval("Cannot bind global to non-symbol type"));
+                        return Err(
+                            err_eval("Cannot bind global to non-symbol type")
+                        );
                     }
                 }
 
-                // Call the function referred to by the `function` register, put the result in the
+                // Call the function referred to by the `function` register,
+                // put the result in the
                 // `dest` register.
                 Opcode::Call {
                     function,
@@ -274,8 +283,9 @@ impl Thread {
                 } => {
                     let binding = window[function as usize].get(mem);
 
-                    // To avoid duplicating code in function and partial application cases,
-                    // this is declared as a closure so it can access local variables
+                    // To avoid duplicating code in function and partial
+                    // application cases, this is declared as a closure so it
+                    // can access local variables
                     let new_call_frame = |function| -> Result<(), RuntimeError> {
                         // Modify the current call frame, saving the return ip
                         let current_frame_ip = instr.get_next_ip();
@@ -287,10 +297,11 @@ impl Thread {
                         });
 
                         // Create a new call frame, pushing it to the frame stack
-                        let new_stack_base = self.stack_base.get() + dest as ArraySize;
-                        let overflow = List::alloc(mem)?;
-
-                        let frame = CallFrame::new(function, 0, new_stack_base, mem)?;
+                        let new_stack_base =
+                            self.stack_base.get() + dest as ArraySize;
+                        let frame = CallFrame::new(
+                            function, 0, new_stack_base, mem
+                        )?;
                         frames.push(mem, frame)?;
 
                         // Update the instruction stream to point to the new function
@@ -384,10 +395,14 @@ impl Thread {
 
                     match (val1, val2) {
                         (Value::NumberObject(num_obj1), Value::NumberObject(num_obj2)) => {
-                            todo!()
+                                let result = num_obj1.add(&num_obj2, mem)?;
+                                let tagged_result = result.as_tagged(mem).get_ptr();
+
+                                window[dest as usize].set_to_ptr(tagged_result);
                         }
                         (Value::Number(num), Value::NumberObject(num_obj)) | 
                          (Value::NumberObject(num_obj), Value::Number(num)) => {
+                             // add a method for add isize to a num object
                             todo!()
                         }
                         (Value::Number(num1), Value::Number(num2)) => {
@@ -409,7 +424,38 @@ impl Thread {
                 },
 
                 // TODO
-                Opcode::Subtract { dest, left, right } => unimplemented!(),
+                Opcode::Subtract { dest, left, right } => {
+                    let val1 = window[left as usize].get(mem).value();
+                    let val2 = window[right as usize].get(mem).value();
+
+                    match (val1, val2) {
+                        (Value::NumberObject(num_obj1), Value::NumberObject(num_obj2)) => {
+                                let result = num_obj1.sub(&num_obj2, mem)?;
+                                let tagged_result = result.as_tagged(mem).get_ptr();
+
+                                window[dest as usize].set_to_ptr(tagged_result);
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj)) | 
+                         (Value::NumberObject(num_obj), Value::Number(num)) => {
+                             // add a method for add isize to a num object
+                            todo!()
+                        }
+                        (Value::Number(num1), Value::Number(num2)) => {
+                            let result = num1 - num2;
+
+                            let tagged_result = if result < TAG_NUM_MIN || TAG_NUM_MAX < result {
+                                let num_obj = NumberObject::alloc_from_isize(result, mem)?;
+
+                                num_obj.as_tagged(mem).get_ptr()
+                            } else {
+                                TaggedPtr::number(result)
+                            };
+
+                            window[dest as usize].set_to_ptr(tagged_result);
+                        }
+                        _ => {unimplemented!("have yet to implement add for non number types")}
+                    }
+                }
 
                 // TODO
                 Opcode::Multiply { dest, reg1, reg2 } => unimplemented!(),
@@ -517,12 +563,10 @@ impl Thread {
         function: ScopedPtr<'guard, Function>,
     ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
         let mut status = EvalStatus::Pending;
-
         let frames = self.frames.get(mem);
         let main_frame = CallFrame::new_main(function, mem)?;
 
         self.set_func(mem, function);
-
         frames.push(mem, main_frame)?;
 
         while status == EvalStatus::Pending {
@@ -672,6 +716,46 @@ mod test {
                 let result = test_helper(view, bytecode).unwrap();
 
                 assert!(result == nil_ptr);
+
+                Ok(())
+            }
+        }
+
+        let test = Test {};
+        mem.mutate(&test, ()).unwrap();
+    }
+
+    #[test]
+    fn test_return_addition() {
+        let mem = Memory::new();
+
+        struct Test {}
+        impl Mutator for Test {
+            type Input = ();
+            type Output = ();
+
+            fn run(
+                &self,
+                view: &MutatorView,
+                _input: Self::Input,
+            ) -> Result<Self::Output, RuntimeError> {
+
+                let bytecode = ByteCode::alloc(view).unwrap();
+                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+
+                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id })?;
+                bytecode.push(view, Opcode::LoadLiteral{ dest: 1, literal_id })?;
+                bytecode.push(view, Opcode::Add{ dest: 0, reg1: 0, reg2: 1})?;
+                bytecode.push(view, Opcode::Add{ dest: 0, reg1: 0, reg2: 1})?;
+                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+
+                let result = test_helper(view, bytecode).unwrap();
+
+                if let Value::Number(n) = result.value() {
+                    assert!(n == 69 * 3);
+                } else {
+                    assert!(false);
+                }
 
                 Ok(())
             }

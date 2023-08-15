@@ -226,10 +226,10 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
         let dest = self.bind(var_id)?;
 
         if num < (i16::MIN as isize) || (i16::MAX as isize) < num {
-            self.push_code(Opcode::LoadInteger { dest, integer: num as i16 })?;
-        } else {
             // either make a taggedptr or load a literal num object
             todo!()
+        } else {
+            self.push_code(Opcode::LoadInteger { dest, integer: num as i16 })?;
         }
 
         Ok(())

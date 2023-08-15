@@ -66,6 +66,7 @@ mod test {
             let bar = gen.decl_var("bar".to_string());
             let temp = gen.get_temp();
 
+            // TODO: create a generator error type
             gen.load_num(foo, 1);
             gen.load_num(bar, 1);
             gen.add(temp, bar, foo);
