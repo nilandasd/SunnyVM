@@ -49,7 +49,7 @@ impl<T: Compiler> Mutator for MetaGenerator<T> {
 
         compiler.compile(&mut generator);
 
-        thread.get(view).set_func(view, func_ptr);
+        thread.get(view).set_func(view, func_ptr)?;
 
         Ok(thread)
     }

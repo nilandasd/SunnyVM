@@ -25,9 +25,7 @@ impl SVM {
     pub fn compile<T: Compiler>(&mut self, compiler: T) -> Result<(), RuntimeError> {
         let meta_gen = MetaGenerator::<T>::new();
         let thread = self.memory.mutate(&meta_gen, compiler)?;
-
         self.thread = Some(thread);
-
         Ok(())
     }
 
@@ -46,9 +44,7 @@ impl Mutator for SVM {
         _input: Self::Input,
     ) -> Result<Self::Output, RuntimeError> {
         let thread = self.thread.as_ref().unwrap().get(view);
-
         thread.execute(view)?;
-
         Ok(())
     }
 }
