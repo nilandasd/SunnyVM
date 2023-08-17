@@ -29,6 +29,21 @@ pub struct Function {
 }
 
 impl Function {
+    pub fn new_default<'guard>(
+        mem: &'guard MutatorView,
+    ) -> Result<Function, RuntimeError> {
+        Ok(
+            Function {
+                name: TaggedCellPtr::new_nil(),
+                arity: 0,
+                code: CellPtr::new_with(ByteCode::alloc(mem)?),
+                param_names: CellPtr::new_with(List::alloc(mem)?),
+                nonlocal_refs: TaggedCellPtr::new_nil(),
+                overflow_capacity: 0,
+            }
+        )
+    }
+
     /// Allocate a Function object on the heap.
     ///
     /// The nonlocal_refs arg must contain a list of 16 bit values composed of two
@@ -62,19 +77,20 @@ impl Function {
     pub fn default_alloc<'guard>(
         mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {
-        mem.alloc(Function {
-            name: TaggedCellPtr::new_nil(),
-            arity: 0,
-            code: CellPtr::new_with(ByteCode::alloc(mem)?),
-            param_names: CellPtr::new_with(List::alloc(mem)?),
-            nonlocal_refs: TaggedCellPtr::new_nil(),
-            overflow_capacity: 0,
-        })
+        mem.alloc(Function::new_default(mem)?)
     }
 
     /// Return the number of arguments the Function can take
     pub fn arity(&self) -> u8 {
         self.arity
+    }
+
+    pub fn overflow_capacity(&self) -> u16 {
+        self.overflow_capacity
+    }
+
+    pub fn set_overflow_capacity(&mut self, x: u16) {
+        self.overflow_capacity = x;
     }
 
     /// Return the names of the parameters that the Function takes
@@ -103,10 +119,6 @@ impl Function {
             Value::ArrayU16(nonlocals) => nonlocals,
             _ => unreachable!(),
         }
-    }
-
-    pub fn overflow_capacity(&self) -> u16 {
-        self.overflow_capacity
     }
 }
 

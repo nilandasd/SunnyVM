@@ -242,16 +242,15 @@ impl Thread {
                 Opcode::LoadGlobal { dest, name } => {
                     let name_val = window[name as usize].get(mem);
 
-                    if let Value::ArrayU8(_) = *name_val {
+                    if let Value::Symbol(symbol) = *name_val {
                         let lookup_result = globals.lookup(mem, name_val);
 
                         match lookup_result {
                             Ok(binding) => window[dest as usize].set(binding),
                             Err(_) => {
-                                return Err(err_eval(&format!(
-                                    "Symbol {} is not bound to a value",
-                                    name_val
-                                )))
+                                window[dest as usize].set(
+                                    TaggedScopedPtr::new(mem, TaggedPtr::nil())
+                                );
                             }
                         }
                     } else {
@@ -263,7 +262,7 @@ impl Thread {
 
                 Opcode::StoreGlobal { src, name } => {
                     let name_val = window[name as usize].get(mem);
-                    if let Value::ArrayU8(_) = *name_val {
+                    if let Value::Symbol(_) = *name_val {
                         let src_val = window[src as usize].get(mem);
                         globals.assoc(mem, name_val, src_val)?;
                     } else {

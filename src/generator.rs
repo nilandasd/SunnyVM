@@ -12,7 +12,6 @@ use crate::bytecode::{Register, Opcode};
 use crate::error::{RuntimeError, GeneratorError};
 use crate::memory::{Mutator, MutatorView, SymbolId};
 use crate::thread::Thread;
-use crate::list::List;
 use crate::function::Function;
 
 pub trait Compiler {
@@ -42,15 +41,12 @@ impl<T: Compiler> Mutator for MetaGenerator<T> {
         view: &MutatorView,
         compiler: Self::Input,
     ) -> Result<Self::Output, RuntimeError> {
-        let global_func = Function::default_alloc(view)?;
+        let global_func = Function::new_default(view)?;
         let mut generator = Generator::new(view, None, global_func);
         let thread = CellPtr::from(Thread::alloc(view)?);
-        let func_ptr = generator.get_func_ptr();
-
         compiler.compile(&mut generator);
-
+        let func_ptr = generator.alloc_func()?;
         thread.get(view).set_func(view, func_ptr)?;
-
         Ok(thread)
     }
 }
@@ -70,7 +66,7 @@ struct Var {
 }
 
 impl Var {
-    fn reg(&self) -> u8 {
+    fn reg(&self) -> Register {
         match self.bind_index {
             None => panic!("not bound"),
             Some(idx) => {
@@ -106,7 +102,7 @@ enum Binding {
 pub struct Generator<'guard, 'parent> {
     mem: &'guard MutatorView<'guard>,
     parent: Option<&'parent mut Generator<'guard, 'parent>>,
-    function: CellPtr<Function>,
+    function: Function,
     vars: HashMap<VarId, Var>,
     bindings: Vec<Binding>,
     temp_counter: usize
@@ -116,10 +112,9 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     fn new(
         mem: &'guard MutatorView<'guard>,
         parent: Option<&'parent mut Generator<'guard, 'parent>>,
-        function: ScopedPtr<'guard, Function>,
+        function: Function,
     ) -> Generator<'guard, 'parent> {
         //let args = CellPtr::from(List::alloc(view)?);
-        let function = CellPtr::from(function);
         let vars = HashMap::new();
         let bindings = vec![];
         let temp_counter = 0;
@@ -128,7 +123,7 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     pub fn load_func(&mut self, var_id: VarId, generator: Generator<'guard, 'parent>) -> Result<(), RuntimeError> {
-        let func_ptr = generator.get_func_ptr().as_tagged(self.mem);
+        let func_ptr = generator.alloc_func()?.as_tagged(self.mem);
         let literal_id = self.push_lit(func_ptr)?;
         let temp = self.get_temp();
         let function = self.bind(temp)?;
@@ -143,7 +138,7 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     pub fn decl_func(&mut self, args: Vec<String>) -> Result<Generator<'guard, 'parent>, RuntimeError> {
-        let new_func = Function::default_alloc(self.mem)?; // TODO: set function args
+        let new_func = Function::new_default(self.mem)?; // TODO: set function args
         let generator = Generator::new(self.mem, None, new_func);
         
         Ok(generator)
@@ -207,17 +202,28 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
         }
     }
 
-    pub fn add(&mut self, dest: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
+    pub fn copy(&mut self, dest: VarId, src: VarId) -> Result<(), RuntimeError> {
         let dest = self.bind(dest)?;
         self.activate(dest);
-        let reg1 = self.bind(op1)?;
-        self.activate(reg1);
-        let reg2 = self.bind(op2)?;
+        let src = self.bind(src)?;
+        
+        self.push_code(Opcode::CopyRegister { dest, src })?;
+
+        self.deactivate(dest);
+
+        Ok(())
+    }
+
+    pub fn add(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
+        let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
         
         self.push_code(Opcode::Add { dest, reg1, reg2 })?;
 
+        self.store_destination_if_nonlocal(dest_var)?;
+
         self.deactivate(dest);
         self.deactivate(reg1);
+        self.deactivate(reg2);
 
         Ok(())
     }
@@ -225,11 +231,17 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<(), RuntimeError> {
         let dest = self.bind(var_id)?;
 
+        // if num < TAG_NUM_MIN || TAG_NUM_MAX < num {
+        //  create a number object
+        //  load the number into the literals
+        //  load the literal id
+        // }
         if num < (i16::MIN as isize) || (i16::MAX as isize) < num {
-            // either make a taggedptr or load a literal num object
-            todo!()
+            // push a tagged num literal
+            // load the literal
+            todo!("load num as")
         } else {
-            self.push_code(Opcode::LoadInteger { dest, integer: num as i16 })?;
+            self.push_code(Opcode::LoadInteger { dest, integer: i16::try_from(num).unwrap() })?;
         }
 
         Ok(())
@@ -260,6 +272,67 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     // ===================== PRIVATE FUNCS ====================================
     // ===================== PRIVATE FUNCS ====================================
     // ===================== VVVVVVVVVVVVV ====================================
+
+    fn activate_and_bind3(
+        &mut self,
+        var1: VarId,
+        var2: VarId,
+        var3: VarId
+    ) -> Result<(Register, Register, Register), RuntimeError> {
+        self.activate_if_bound(var1);
+        self.activate_if_bound(var2);
+        self.activate_if_bound(var3);
+        
+        let reg1 = self.bind(var1)?;
+        self.activate(reg1);
+
+        let reg2= self.bind(var2)?;
+        self.activate(reg2);
+
+        let reg3 = self.bind(var3)?;
+        self.activate(reg3);
+
+        Ok((reg1, reg2, reg3))
+    }
+
+    fn activate_if_bound(&mut self, var: VarId) {
+        if let Some(n) = self.vars.get(&var).unwrap().bind_index {
+            if n < 256 {
+                self.activate(n as Register);
+            }
+        }
+    }
+
+    fn store_destination_if_nonlocal(&mut self, dest: VarId) -> Result<(), RuntimeError> {
+        let dest_var = self.vars.get(&dest).unwrap().clone();
+
+        match dest_var.kind {
+            VarKind::Global => {
+                match dest {
+                    VarId::Symbol(symbol) => {
+                        let temp_id = self.get_temp();
+                        let temp = self.bind(temp_id)?;
+                        let dest_reg = Register::try_from(dest_var.bind_index.unwrap()).unwrap();
+
+                        // TODO: if symbol is too large create a load literal instruction!
+                        // this try from u16 will fail if we have more than u16::max symbols in the program
+                        self.push_code(Opcode::LoadSymbol { dest: temp, symbol: u16::try_from(symbol).unwrap() })?;
+                        self.push_code(Opcode::StoreGlobal { src: dest_reg, name: temp })?;
+
+                        self.free(dest); // destination can be freed since the value was stored in the global
+                        self.free(temp_id);
+                    }
+                    VarId::Temp(_) => {unreachable!("global cannot be temp")}
+                }
+            }
+            VarKind::Upvalue { upvalue_id, frame_offset, frame_register } => {
+                unimplemented!("have yet to implement storing upvalues")
+            }
+            _ => {}
+        }
+
+        Ok(())
+    }
 
     fn is_global_scope(&self) -> bool {
         self.parent.is_none()
@@ -348,9 +421,9 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     // return reg this way we can write let reg self.active(self.bind(var_id));
-    fn activate(&mut self, reg: u8) {
+    fn activate(&mut self, reg: Register) {
         match self.bindings[reg as usize] {
-            Binding::Freed => panic!("cannot active free binding"),
+            Binding::Freed => panic!("cannot activate free binding"),
             Binding::Used(var_id) => {
                 self.bindings[reg as usize] = Binding::Active(var_id);
             }
@@ -358,13 +431,12 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
         }
     }
 
-    fn deactivate(&mut self, reg: u8) {
+    fn deactivate(&mut self, reg: Register) {
         match self.bindings[reg as usize] {
-            Binding::Freed => panic!("cannot deactive free binding"),
-            Binding::Used(_) => {} // already deactivated
             Binding::Active(var_id) => {
                 self.bindings[reg as usize] = Binding::Used(var_id);
             },
+            _ => {}
         }
     }
 
@@ -377,8 +449,6 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     //  3. the variable is bound to an overflow
     //      - insert a load_overflow instruction
     //      - find / evict a reg
-    // 1 there is an available free register
-    // may need to create spill or zambone instructions to do so
     fn bind(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
         let mut var = self.vars.get(&var_id).unwrap().clone();
 
@@ -404,6 +474,32 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
             }
         };
 
+        match var.kind {
+            VarKind::Global => {
+                // if the variable is a global create a load global instr
+                match var_id {
+                    VarId::Symbol(symbol) => {
+                        let temp_id = self.get_temp();
+                        let temp = self.bind(temp_id)?;
+                        let dest_reg = Register::try_from(var.bind_index.unwrap()).unwrap();
+
+                        // TODO: if symbol is too large create a load literal instruction!
+                        // this try from u16 will fail if we have more than u16::max symbols in the program
+                        self.push_code(Opcode::LoadSymbol { dest: temp, symbol: u16::try_from(symbol).unwrap() })?;
+                        self.push_code(Opcode::LoadGlobal { dest: dest_reg, name: temp })?;
+
+                        self.free(temp_id);
+                    }
+                    VarId::Temp(_) => {unreachable!("global cannot be temp")}
+                }
+            }
+            VarKind::Upvalue { upvalue_id, frame_offset, frame_register} => {
+                // if the variable is an upvalue create a load upvalue instr
+                unimplemented!("cannot load upvalues yet")
+            }
+            _ => {}
+        }
+
         self.vars.insert(var_id, var);
 
         Ok(var.bind_index.unwrap() as u8)
@@ -412,7 +508,7 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     // sets a register to be Binding::Userd(var_id) and returns the index
     fn get_free_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
         let mut index = 0;
-        while index < self.bindings.len() && index < 256 {
+        while index < self.bindings.len() && index < 255 {
             let binding = self.bindings[index];
 
             match binding {
@@ -421,10 +517,8 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
 
                     return Ok(u8::try_from(index).unwrap());
                 }
-                _ => {}
+                _ => { index += 1; }
             }
-
-            index += 1;
         }
 
         if index == self.bindings.len() {
@@ -442,22 +536,19 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
             if index < 256 {
                 match binding {
                     Binding::Active(_) => {
+                        index += 1;
                         continue;
                     }
                     Binding::Used(old_var_id) => {
                         self.bindings[index] = Binding::Used(var_id);
                         self.evict(old_var_id)?;
-                        self.function.get(self.mem);
 
                         return Ok(u8::try_from(index).unwrap());
                     }
                     Binding::Freed => unreachable!("there are no free registers"),
                 }
             }
-
-            index += 1;
         }
-
         unreachable!("every register was active!")
     }
 
@@ -507,7 +598,7 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     fn push_code(&self, code: Opcode) -> Result<Offset, RuntimeError> {
-        let bytecode = self.function.get(self.mem).code(self.mem);
+        let bytecode = self.function.code(self.mem);
 
         bytecode.push(self.mem, code)?;
 
@@ -515,23 +606,63 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     fn push_lit(&self, literal: TaggedScopedPtr<'guard>) -> Result<LiteralId, RuntimeError> {
-        let bytecode = self.function.get(self.mem).code(self.mem);
+        let bytecode = self.function.code(self.mem);
 
         bytecode.push_lit(self.mem, literal)
     }
 
     fn free(&mut self, var_id: VarId) {
-        let var = self.vars.get(&var_id).unwrap();
+        let mut var = self.vars.get(&var_id).unwrap();
 
         match var.bind_index {
             None => {},
             Some(idx) => self.bindings[idx as usize] = Binding::Freed,
         }
-
-        self.vars.remove(&var_id);
     }
 
-    fn get_func_ptr(&self) -> ScopedPtr<'guard, Function> {
-        self.function.get(self.mem)
+    fn alloc_func(mut self) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {
+        if 256 < self.bindings.len() {
+            let overflow_capacity = u16::try_from(self.bindings.len() - 256).unwrap();
+            self.function.set_overflow_capacity(overflow_capacity);
+        }
+        self.mem.alloc(self.function)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::vm::SVM;
+
+    struct OverflowTestCompiler {}
+
+    impl Compiler for OverflowTestCompiler {
+        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), ()> {
+            let result = gen.decl_var("result".to_string());
+            let one = gen.get_temp();
+            gen.load_num(one, 1);
+            gen.load_num(result, 1);
+            // only 256 variables can be bound at once
+            // this should cause some evict instructions to be generated
+            // and for some variables to be evicted
+            for _ in 0..500 {
+                let temp = gen.get_temp();
+                gen.copy(temp, one);
+                gen.add(result, result, temp);
+            }
+
+            gen.gen_return(result);
+
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn test_overflow() {
+        let mut vm = SVM::new();
+        let test_compiler = OverflowTestCompiler{};
+
+        vm.compile(test_compiler).expect("compiles");
+        vm.execute().expect("no errors");
     }
 }
