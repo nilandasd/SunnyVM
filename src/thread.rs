@@ -1,4 +1,5 @@
-use std::cell::Cell;
+use std::cell::{Cell, RefCell, RefMut};
+use std::io::{self, Write};
 
 use crate::array::ArraySize;
 use crate::bytecode::{ByteCode, InstructionStream, Opcode};
@@ -112,6 +113,7 @@ impl Thread {
     fn eval_next_instr<'guard>(
         &self,
         mem: &'guard MutatorView,
+        output_stream: &mut Box<dyn Write>,
     ) -> Result<EvalStatus<'guard>, RuntimeError> {
         // TODO not all these locals are required in every opcode - optimize and get them only
         // where needed
@@ -507,6 +509,10 @@ impl Thread {
 
                     overflow.set(mem, overflow_id as u32, TaggedCellPtr::new_with(value))?;
                 }
+
+                Opcode::Print { dest } => {
+                    write!(output_stream, "{}\n", window[dest as usize].get(mem))?;
+                }
             }
 
             Ok(EvalStatus::Pending)
@@ -518,9 +524,10 @@ impl Thread {
         &self,
         mem: &'guard MutatorView,
         max_instr: ArraySize,
+        output_stream: &mut Box<dyn Write>,
     ) -> Result<EvalStatus<'guard>, RuntimeError> {
         for _ in 0..max_instr {
-            match self.eval_next_instr(mem) {
+            match self.eval_next_instr(mem, output_stream) {
                 // Evaluation paused or completed without error
                 Ok(exit_cond) => match exit_cond {
                     EvalStatus::Return(value) => return Ok(EvalStatus::Return(value)),
@@ -561,6 +568,7 @@ impl Thread {
         &self,
         mem: &'guard MutatorView,
         function: ScopedPtr<'guard, Function>,
+        output_stream: &mut Box<dyn Write>,
     ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
         let mut status = EvalStatus::Pending;
         let frames = self.frames.get(mem);
@@ -570,7 +578,7 @@ impl Thread {
         frames.push(mem, main_frame)?;
 
         while status == EvalStatus::Pending {
-            status = self.eval_stream(mem, 1024)?;
+            status = self.eval_stream(mem, 1024, output_stream)?;
             match status {
                 EvalStatus::Return(value) => return Ok(value),
                 _ => (),
@@ -584,11 +592,12 @@ impl Thread {
     pub fn execute<'guard>(
         &self,
         mem: &'guard MutatorView,
+        output_stream: &mut Box<dyn Write>,
     ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
         let mut status = EvalStatus::Pending;
 
         while status == EvalStatus::Pending {
-            status = self.eval_stream(mem, 1024)?;
+            status = self.eval_stream(mem, 1024, output_stream)?;
             match status {
                 EvalStatus::Return(value) => return Ok(value),
                 _ => (),
@@ -638,7 +647,10 @@ mod test {
             0
         ).unwrap();
 
-        thread.quick_vm_eval(view, function)
+        let cell_stream: RefCell<Box<dyn Write>> = RefCell::new(Box::new(io::stdout()));
+        let stream = &mut *cell_stream.borrow_mut();
+
+        thread.quick_vm_eval(view, function, stream)
     }
 
     #[test]

@@ -218,9 +218,19 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
         let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
         
         self.push_code(Opcode::Add { dest, reg1, reg2 })?;
-
         self.store_destination_if_nonlocal(dest_var)?;
+        self.deactivate(dest);
+        self.deactivate(reg1);
+        self.deactivate(reg2);
 
+        Ok(())
+    }
+
+    pub fn sub(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
+        let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
+        
+        self.push_code(Opcode::Subtract { dest, left: reg1, right: reg2 })?;
+        self.store_destination_if_nonlocal(dest_var)?;
         self.deactivate(dest);
         self.deactivate(reg1);
         self.deactivate(reg2);
@@ -265,6 +275,12 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
 
         self.push_code(Opcode::Return { reg })?;
 
+        Ok(())
+    }
+
+    pub fn print(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+        let dest = self.bind(var_id)?;
+        self.push_code(Opcode::Print { dest })?;
         Ok(())
     }
 
@@ -612,12 +628,19 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     fn free(&mut self, var_id: VarId) {
-        let mut var = self.vars.get(&var_id).unwrap();
+        let mut var: &Var = self.vars.get(&var_id).unwrap();
 
         match var.bind_index {
             None => {},
-            Some(idx) => self.bindings[idx as usize] = Binding::Freed,
+            Some(idx) => {
+                self.bindings[idx as usize] = Binding::Freed;
+            }
         }
+
+        self.vars.insert(var_id, Var {
+            kind: var.kind,
+            bind_index: None,
+        });
     }
 
     fn alloc_func(mut self) -> Result<ScopedPtr<'guard, Function>, RuntimeError> {

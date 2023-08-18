@@ -83,6 +83,7 @@ impl<T: Sized> CellPtr<T> {
     pub fn get<'guard>(&self, guard: &'guard dyn MutatorScope) -> ScopedPtr<'guard, T> {
         ScopedPtr::new(guard, self.inner.get().scoped_ref(guard))
     }
+
     pub fn set(&self, source: ScopedPtr<T>) {
         self.inner.set(RawPtr::new(source.value))
     }

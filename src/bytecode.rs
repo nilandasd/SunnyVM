@@ -26,6 +26,9 @@ pub type NumArgs = u8;
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Opcode {
     NoOp,
+    Print {
+        dest: Register
+    },
     Return {
         reg: Register,
     },
