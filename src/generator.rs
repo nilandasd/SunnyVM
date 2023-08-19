@@ -15,7 +15,7 @@ use crate::thread::Thread;
 use crate::function::Function;
 
 pub trait Compiler {
-    fn compile<'guard>(self, generator: &mut Generator) -> Result<(), ()>;
+    fn compile<'guard>(self, generator: &mut Generator) -> Result<(), RuntimeError>;
 }
 
 pub type Offset = u32;
@@ -320,7 +320,6 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     }
 
     fn store_destination_if_nonlocal(&mut self, dest: VarId) -> Result<(), RuntimeError> {
-        println!("CALL: store_destination_if_nonlocal");
         let dest_var = self.vars.get(&dest).unwrap().clone();
 
         match dest_var.kind {
@@ -467,7 +466,6 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
     //      - insert a load_overflow instruction
     //      - find / evict a reg
     fn bind(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
-        println!("CALL: bind");
         let mut var = self.vars.get(&var_id).unwrap().clone();
 
         match var.bind_index {
@@ -525,7 +523,6 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
 
     // sets a register to be Binding::Userd(var_id) and returns the index
     fn get_free_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
-        println!("CALL: get_free_reg");
         let mut index = 0;
         while index < self.bindings.len() && index < 255 {
             let binding = self.bindings[index];
@@ -578,7 +575,6 @@ impl<'guard, 'parent> Generator<'guard, 'parent> {
         let mut var = self.vars.get(&var_id).unwrap().clone();
         let mut index = 256;
         let mut overflow_id = 0;
-        println!("EVICTING: {:?}", var.bind_index);
         let src = u8::try_from(var.bind_index.unwrap()).unwrap();
 
         while index < self.bindings.len() {
@@ -662,21 +658,21 @@ mod test {
     struct OverflowTestCompiler {}
 
     impl Compiler for OverflowTestCompiler {
-        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), ()> {
+        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), RuntimeError> {
             let result = gen.decl_var("result".to_string());
             let one = gen.get_temp();
-            gen.load_num(one, 1);
-            gen.load_num(result, 1);
+            gen.load_num(one, 1)?;
+            gen.load_num(result, 1)?;
             // only 256 variables can be bound at once
             // this should cause some evict instructions to be generated
             // and for some variables to be evicted
             for _ in 0..500 {
                 let temp = gen.get_temp();
-                gen.copy(temp, one);
-                gen.add(result, result, temp);
+                gen.copy(temp, one)?;
+                gen.add(result, result, temp)?;
             }
 
-            gen.gen_return(result);
+            gen.gen_return(result)?;
 
             Ok(())
         }

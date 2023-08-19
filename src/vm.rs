@@ -64,18 +64,18 @@ mod test {
     use crate::generator::Generator;
 
     struct TestCompiler {
-        test_case: fn(gen: &mut Generator) -> Result<(), ()>
+        test_case: fn(gen: &mut Generator) -> Result<(), RuntimeError>
     }
 
     impl Compiler for TestCompiler {
-        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), ()> {
+        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), RuntimeError> {
             (self.test_case)(gen)
         }
     }
 
     // test name should end in .test so they can be cleaned up
     fn vm_test_helper(
-        test_case: fn(&mut Generator)->Result<(), ()>,
+        test_case: fn(&mut Generator)->Result<(), RuntimeError>,
         file_name: &str,
         expected_output: &str
     ) {
@@ -98,21 +98,21 @@ mod test {
 
     #[test]
     fn test_add() {
-        fn case(gen: &mut Generator) -> Result<(), ()> {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
             let foo = gen.decl_var("foo".to_string());
             let bar = gen.decl_var("bar".to_string());
             let baz = gen.decl_var("baz".to_string());
             // TODO: create a generator error type
 
-            gen.load_num(foo, 1);
-            gen.load_num(bar, 1);
-            gen.load_num(baz, 1);
-            gen.add(bar, bar, foo);
-            gen.add(baz, bar, foo);
-            gen.print(foo);
-            gen.print(bar);
-            gen.print(baz);
-            gen.gen_return(foo);
+            gen.load_num(foo, 1)?;
+            gen.load_num(bar, 1)?;
+            gen.load_num(baz, 1)?;
+            gen.add(bar, bar, foo)?;
+            gen.add(baz, bar, foo)?;
+            gen.print(foo)?;
+            gen.print(bar)?;
+            gen.print(baz)?;
+            gen.gen_return(foo)?;
 
             Ok(())
         }
@@ -121,19 +121,19 @@ mod test {
 
     #[test]
     fn test_sub() {
-        fn case(gen: &mut Generator) -> Result<(), ()> {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
             let foo = gen.decl_var("foo".to_string());
             let bar = gen.decl_var("bar".to_string());
             // TODO: create a generator error type
 
-            gen.load_num(foo, 0).unwrap();
-            gen.load_num(bar, 1).unwrap();
+            gen.load_num(foo, 0)?;
+            gen.load_num(bar, 1)?;
             for _ in 0..600 {
-                gen.sub(foo, foo, bar).unwrap();
+                gen.sub(foo, foo, bar)?;
             }
 
-            gen.print(foo).unwrap();
-            gen.gen_return(foo).unwrap();
+            gen.print(foo)?;
+            gen.gen_return(foo)?;
 
             Ok(())
         }
