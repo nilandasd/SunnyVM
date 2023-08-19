@@ -20,8 +20,6 @@ impl SourcePos {
 #[derive(Debug, PartialEq)]
 pub enum ErrorKind {
     IOError(String),
-    LexerError(String),
-    ParseError(String),
     EvalError(String),
     BadAllocationRequest,
     OutOfMemory,
@@ -29,16 +27,14 @@ pub enum ErrorKind {
     KeyError,
     UnhashableError,
     MutableBorrowError,
+    BadBinding,
+    VarNotFound,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct RuntimeError {
     kind: ErrorKind,
     pos: Option<SourcePos>,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct GeneratorError {
 }
 
 impl RuntimeError {
@@ -89,10 +85,10 @@ impl fmt::Display for RuntimeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.kind {
             ErrorKind::IOError(ref reason) => write!(f, "IO Error: {}", reason),
-            ErrorKind::LexerError(ref reason) => write!(f, "Lexer error: {}", reason),
-            ErrorKind::ParseError(ref reason) => write!(f, "Parse error: {}", reason),
             ErrorKind::EvalError(ref reason) => write!(f, "Evaluation error: {}", reason),
             ErrorKind::OutOfMemory => write!(f, "Out of memory!"),
+            ErrorKind::BadBinding => write!(f, "Bad binding"),
+            ErrorKind::VarNotFound => write!(f, "Var not found!"),
             ErrorKind::BadAllocationRequest => {
                 write!(f, "An invalid memory size allocation was requested!")
             }
@@ -121,12 +117,6 @@ impl From<ReadlineError> for RuntimeError {
     }
 }
 */
-
-impl From<RuntimeError> for GeneratorError {
-    fn from(other: RuntimeError) -> GeneratorError {
-        GeneratorError{}
-    }
-}
 
 // Convert from BlockError
 impl From<BlockError> for RuntimeError {
@@ -165,21 +155,6 @@ impl From<RuntimeError> for fmt::Error {
 // Convenience shorthand function for building a SourcePos
 pub fn spos(line: u32, column: u32) -> SourcePos {
     SourcePos::new(line, column)
-}
-
-// Convenience shorthand function for building a lexer error
-pub fn err_lexer(pos: SourcePos, reason: &str) -> RuntimeError {
-    RuntimeError::with_pos(ErrorKind::LexerError(String::from(reason)), pos)
-}
-
-// Convenience shorthand function for building a parser error
-pub fn err_parser(reason: &str) -> RuntimeError {
-    RuntimeError::new(ErrorKind::ParseError(String::from(reason)))
-}
-
-// Convenience shorthand function for building a parser error including a source position
-pub fn err_parser_wpos(pos: SourcePos, reason: &str) -> RuntimeError {
-    RuntimeError::with_pos(ErrorKind::ParseError(String::from(reason)), pos)
 }
 
 // Convenience shorthand function for building an evaluation error
