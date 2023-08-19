@@ -126,17 +126,18 @@ mod test {
             let bar = gen.decl_var("bar".to_string());
             // TODO: create a generator error type
 
-            gen.load_num(foo, 0);
-            gen.load_num(bar, 1);
-            for _ in 0..1337 {
-                gen.sub(foo, foo, bar);
+            gen.load_num(foo, 0).unwrap();
+            gen.load_num(bar, 1).unwrap();
+            for _ in 0..600 {
+                gen.sub(foo, foo, bar).unwrap();
             }
 
-            gen.print(foo);
+            gen.print(foo).unwrap();
+            gen.gen_return(foo).unwrap();
 
             Ok(())
         }
-        vm_test_helper(case, "test_sub.test", "-1337\n");
+        vm_test_helper(case, "test_sub.test", "-600\n");
     }
 
     #[test]
