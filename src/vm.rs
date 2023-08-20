@@ -102,7 +102,6 @@ mod test {
             let foo = gen.decl_var("foo".to_string());
             let bar = gen.decl_var("bar".to_string());
             let baz = gen.decl_var("baz".to_string());
-            // TODO: create a generator error type
 
             gen.load_num(foo, 1)?;
             gen.load_num(bar, 1)?;
@@ -124,7 +123,6 @@ mod test {
         fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
             let foo = gen.decl_var("foo".to_string());
             let bar = gen.decl_var("bar".to_string());
-            // TODO: create a generator error type
 
             gen.load_num(foo, 0)?;
             gen.load_num(bar, 1)?;
@@ -142,10 +140,33 @@ mod test {
 
     #[test]
     fn test_func_call() {
-        fn case(gen: &mut Generator) -> Result<(), ()> {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let baz = gen.decl_var("baz".to_string());
+
+            gen.push_func(vec![])?;
+
+            let foo = gen.decl_var("foo".to_string());
+            let bar = gen.decl_var("bar".to_string());
+            let temp = gen.get_temp();
+
+            gen.load_num(foo, 12)?;
+            gen.load_num(bar, 83)?;
+            gen.add(temp, bar, foo)?;
+            gen.gen_return(temp)?;
+            gen.pop_func(baz)?;
+
+            let temp = gen.get_temp();
+
+            gen.call(baz, temp)?;
+            gen.print(temp)?;
+            gen.call(baz, temp)?;
+            gen.print(temp)?;
+            gen.call(baz, temp)?;
+            gen.print(temp)?;
+            gen.gen_return(temp)?;
 
             Ok(())
         }
-        //vm_test_helper(case, "test_func_call.test", "1\n2\n3\n");
+        vm_test_helper(case, "test_call.test", "95\n95\n95\n");
     }
 }

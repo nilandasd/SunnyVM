@@ -74,7 +74,6 @@ pub enum Opcode {
     Call {
         function: Register,
         dest: Register,
-        arg_count: NumArgs,
     },
     MakeClosure {
         dest: Register,

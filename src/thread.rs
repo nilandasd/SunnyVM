@@ -274,13 +274,9 @@ impl Thread {
                     }
                 }
 
-                // Call the function referred to by the `function` register,
-                // put the result in the
-                // `dest` register.
                 Opcode::Call {
                     function,
-                    dest,
-                    arg_count,
+                    dest
                 } => {
                     let binding = window[function as usize].get(mem);
 
@@ -322,14 +318,6 @@ impl Thread {
                     match *binding {
                         Value::Function(function) => {
                             let arity = function.arity();
-                            if arg_count != arity {
-                                return Err(err_eval(&format!(
-                                    "Function {} expected {} arguments, got {}",
-                                    binding,
-                                    function.arity(),
-                                    arg_count
-                                )));
-                            }
 
                             new_call_frame(function)?;
                         }
