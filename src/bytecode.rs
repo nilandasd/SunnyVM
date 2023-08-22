@@ -21,7 +21,6 @@ pub type OverflowId = u16;
 pub type UpvalueId = u8;
 pub type JumpOffset = i16;
 pub const JUMP_UNKNOWN: i16 = 0x7fff;
-pub type NumArgs = u8;
 
 #[derive(PartialEq, Debug, Clone, Copy)]
 pub enum Opcode {

@@ -19,7 +19,7 @@ pub struct NumberObject {
 }
 
 #[derive(PartialEq)]
-enum NumObjRelation {
+pub enum NumObjRelation {
     Greater,
     Equal,
     Less,

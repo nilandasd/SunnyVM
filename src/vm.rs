@@ -1,6 +1,5 @@
 use std::cell::RefCell;
-use std::fs::{self, File};
-use std::io::{self, Cursor, Read, Write};
+use std::io::{self, Write};
 
 use crate::error::RuntimeError;
 use crate::generator::{Compiler, MetaGenerator};
@@ -58,6 +57,8 @@ impl Mutator for SVM {
 mod test {
     use super::*;
     use crate::generator::Generator;
+    use std::fs::{self, File};
+    use std::io::Read;
 
     struct TestCompiler {
         test_case: fn(gen: &mut Generator) -> Result<(), RuntimeError>,

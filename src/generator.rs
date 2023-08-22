@@ -1,17 +1,14 @@
-use std::cell::RefCell;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::marker::PhantomData;
 
-use zapalloc::ArraySize;
-
-use crate::bytecode::{ByteCode, JumpOffset, LiteralId};
+use crate::bytecode::LiteralId;
 use crate::bytecode::{Opcode, Register};
 use crate::error::RuntimeError;
 use crate::function::Function;
 use crate::memory::{Mutator, MutatorView, SymbolId};
-use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
-use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedScopedPtr};
+use crate::tagged_ptr::Value;
 use crate::thread::Thread;
 
 pub type Offset = u32;
@@ -83,10 +80,9 @@ impl<T: Compiler> Mutator for MetaGenerator<T> {
     type Output = CellPtr<Thread>;
 
     fn run(&self, view: &MutatorView, compiler: Self::Input) -> Result<Self::Output, RuntimeError> {
-        let global_func = Function::new_default(view)?;
         let mut generator = Generator::new(view)?;
         let thread = CellPtr::from(Thread::alloc(view)?);
-        compiler.compile(&mut generator);
+        compiler.compile(&mut generator)?;
         let func_ptr = generator.function_stack.pop().unwrap().alloc_func()?;
         thread.get(view).set_func(view, func_ptr)?;
         Ok(thread)
@@ -232,7 +228,7 @@ impl<'guard> Generator<'guard> {
 
     // pushes a function onto the stack, generated code always
     // targets the top function
-    pub fn push_func(&mut self, args: Vec<String>) -> Result<(), RuntimeError> {
+    pub fn push_func(&mut self, _args: Vec<String>) -> Result<(), RuntimeError> {
         // TODO use the args!!!
 
         self.function_stack.push(FunctionGenerator::new(
@@ -546,7 +542,7 @@ impl<'guard> FunctionGenerator<'guard> {
         self.vars.get(&var_id).is_some()
     }
 
-    fn close_var(&mut self, frame_offset: u8, frame_register: u8, var_id: VarId) {
+    fn close_var(&mut self, _frame_offset: u8, _frame_register: u8, _var_id: VarId) {
         todo!()
         /*
         let upvalue = Var {
@@ -595,9 +591,7 @@ impl<'guard> FunctionGenerator<'guard> {
                 }
             }
             VarKind::Upvalue {
-                upvalue_id,
-                frame_offset,
-                frame_register,
+                ..
             } => {
                 unimplemented!("have yet to implement storing upvalues")
             }
@@ -718,9 +712,7 @@ impl<'guard> FunctionGenerator<'guard> {
                 }
             }
             VarKind::Upvalue {
-                upvalue_id,
-                frame_offset,
-                frame_register,
+                ..
             } => {
                 // if the variable is an upvalue create a load upvalue instr
                 unimplemented!("cannot bind upvalues yet")
@@ -861,7 +853,7 @@ impl<'guard> FunctionGenerator<'guard> {
     }
 
     fn free(&mut self, var_id: VarId) {
-        let mut var: &Var = self.vars.get(&var_id).unwrap();
+        let var: &Var = self.vars.get(&var_id).unwrap();
 
         match var.bind_index {
             None => {}

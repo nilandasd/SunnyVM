@@ -20,3 +20,12 @@ mod text;
 mod thread;
 mod upvalue;
 mod vm;
+
+pub use crate::vm::{
+    SVM
+};
+
+pub use crate::generator::{
+    Compiler,
+    Generator
+};
