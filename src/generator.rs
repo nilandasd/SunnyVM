@@ -49,7 +49,7 @@ enum VarKind {
     Temp,
 }
 
-#[derive(Copy, Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 enum Binding {
     Freed,
     Used(VarId),
@@ -295,21 +295,51 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
-    pub fn copy(&mut self, dest: VarId, src: VarId) -> Result<(), RuntimeError> {
-        let dest = self.bind(dest)?;
+    pub fn copy(&mut self, dest_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
+        let dest = self.bind(dest_var)?;
         self.activate(dest);
-        let src = self.bind(src)?;
+        let src = self.bind(src_var)?;
         self.push_code(Opcode::CopyRegister { dest, src })?;
+        self.store_destination_if_nonlocal(dest_var)?;
         self.deactivate(dest);
         Ok(())
     }
 
     pub fn call(&mut self, function: VarId, dest: VarId) -> Result<(), RuntimeError> {
         let function = self.bind(function)?;
+        if function == 255 {
+            todo!("functions cannot be called from the last register!")
+        }
         self.activate(function);
-        let dest = self.bind(dest)?;
-        self.push_code(Opcode::Call { function, dest })?;
+
+        let mut call_site: Register = 0;
+        for (reg, binding) in self.bindings.iter().enumerate() {
+            if 255 < reg { break; }
+
+            match binding {
+                Binding::Freed => {}
+                Binding::Used(_) | Binding::Active(_) => {
+                    if reg == 255 {
+                        call_site = 255 as Register;
+                    } else {
+                        call_site = (reg + 1) as Register;
+                    }
+                }
+            }
+        }
+
+        if (call_site as usize) == self.bindings.len() {
+            self.bindings.push(Binding::Freed);
+        }
+
+        if (call_site == 255) && (self.bindings[255] != Binding::Freed) {
+            self.evict(255)?;
+        } 
+
+        self.bind_to(call_site, dest)?;
+        self.push_code(Opcode::Call { function, dest: call_site })?;
         self.deactivate(function);
+
         Ok(())
     }
 
@@ -386,7 +416,6 @@ impl<'guard> FunctionGenerator<'guard> {
     // ===================== PRIVATE FUNCS ====================================
     // ===================== PRIVATE FUNCS ====================================
     // ===================== PRIVATE FUNCS ====================================
-    // ===================== VVVVVVVVVVVVV ====================================
 
     fn activate_and_bind3(
         &mut self,
@@ -497,12 +526,12 @@ impl<'guard> FunctionGenerator<'guard> {
 
         match var.bind_index {
             None => {
-                let new_bind_index = self.get_free_reg(var_id)?;
+                let new_bind_index = self.bind_reg(var_id)?;
                 var.bind_index = Some(u16::try_from(new_bind_index).unwrap());
             }
             Some(bind_index) => {
-                if bind_index > 255 {
-                    let new_bind_index = self.get_free_reg(var_id)?;
+                if 255 < bind_index {
+                    let new_bind_index = self.bind_reg(var_id)?;
                     let overflow_id = u16::try_from(bind_index - 256).unwrap();
                     var.bind_index = Some(u16::try_from(new_bind_index).unwrap());
                     self.push_code(
@@ -517,6 +546,31 @@ impl<'guard> FunctionGenerator<'guard> {
             }
         };
 
+        self.load_if_nonlocal(var, var_id);
+
+        self.vars.insert(var_id, var);
+
+        Ok(var.bind_index.unwrap() as u8)
+    }
+
+    fn bind_to(&mut self, reg: Register, var_id: VarId) -> Result<(), RuntimeError> {
+        match self.bindings[reg as usize] {
+            Binding::Freed => {}
+            Binding::Used(_) => self.evict(reg)?,
+            Binding::Active(_) => {
+                panic!("Attempted to bind to an active register!");
+            }
+        }
+
+        self.bindings[reg as usize] = Binding::Used(var_id);
+        let mut var = self.vars.get(&var_id).unwrap().clone();
+        var.bind_index = Some(reg as u16);
+        self.vars.insert(var_id, var);
+
+        Ok(())
+    }
+
+    fn load_if_nonlocal(&mut self, var: Var, var_id: VarId) -> Result<(), RuntimeError> {
         match var.kind {
             VarKind::Global => {
                 // if the variable is a global create a load global instr
@@ -538,71 +592,87 @@ impl<'guard> FunctionGenerator<'guard> {
             }
             VarKind::Upvalue { upvalue_id, frame_offset, frame_register} => {
                 // if the variable is an upvalue create a load upvalue instr
-                unimplemented!("cannot load upvalues yet")
+                unimplemented!("cannot bind upvalues yet")
             }
             _ => {}
         }
 
-        self.vars.insert(var_id, var);
-
-        Ok(var.bind_index.unwrap() as u8)
+        Ok(())
     }
 
-    // sets a register to be Binding::Userd(var_id) and returns the index
-    fn get_free_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
+    fn find_free_reg(&mut self) -> Option<Register> {
         let mut index = 0;
-        while index < self.bindings.len() && index < 255 {
+
+        while index < self.bindings.len() && index < 256 {
             let binding = self.bindings[index];
 
             match binding {
                 Binding::Freed => {
-                    self.bindings[index] = Binding::Used(var_id);
-
-                    return Ok(u8::try_from(index).unwrap());
+                    return Some(u8::try_from(index).unwrap());
                 }
                 _ => { index += 1; }
             }
         }
 
-        if index == self.bindings.len() {
-            self.bindings.push(Binding::Used(var_id));
-            return Ok(u8::try_from(index).unwrap());
+        if index == self.bindings.len() && index < 255 {
+            self.bindings.push(Binding::Freed);
+            return Some(u8::try_from(index).unwrap());
         }
 
-        // we didn't find a free register :(
-        // we must spill a register into memory
- 
-        index = 0;
-        while index < 256 {
-            let binding = self.bindings[index];
-
-            if index < 256 {
-                match binding {
-                    Binding::Active(_) => {
-                        index += 1;
-                        continue;
-                    }
-                    Binding::Used(old_var_id) => {
-                        self.bindings[index] = Binding::Used(var_id);
-                        self.evict(old_var_id)?;
-
-                        return Ok(u8::try_from(index).unwrap());
-                    }
-                    Binding::Freed => unreachable!("there are no free registers"),
-                }
-            }
-        }
-        unreachable!("every register was active!")
+        None
     }
 
-    // finds an overflow index to evict the var to
-    // updates the vars bind index
-    // inserts a store_overflow instruction
-    fn evict(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+    fn find_used_reg(&mut self) -> Option<Register> {
+        let mut index = 0;
+
+        while index < self.bindings.len() && index < 256 {
+            let binding = self.bindings[index];
+
+            match binding {
+                Binding::Used(_) => {
+                    return Some(u8::try_from(index).unwrap());
+                }
+                _ => { index += 1; }
+            }
+        }
+
+        None
+    }
+
+    fn bind_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
+        if let Some(free_reg) = self.find_free_reg() {
+            self.bindings[free_reg as usize] = Binding::Used(var_id);
+            return Ok(u8::try_from(free_reg).unwrap());
+        }
+
+        if let Some(evicted_reg) = self.find_used_reg() {
+            self.bindings[evicted_reg as usize] = Binding::Used(var_id);
+            self.evict(evicted_reg)?;
+
+            return Ok(u8::try_from(evicted_reg).unwrap());
+        }
+
+        unreachable!("")
+    }
+
+    fn evict(&mut self, evict_reg: Register) -> Result<(), RuntimeError> {
+        let var_id = match self.bindings[evict_reg as usize] {
+            Binding::Active(_) => panic!("tried to evict active register"),
+            Binding::Used(var_id) => var_id,
+            Binding::Freed => { return Ok(()) }
+        };
         let mut var = self.vars.get(&var_id).unwrap().clone();
         let mut index = 256;
         let mut overflow_id = 0;
         let src = u8::try_from(var.bind_index.unwrap()).unwrap();
+
+        if let Some(free_reg) = self.find_free_reg() {
+            var.bind_index = Some(free_reg as u16);
+            self.vars.insert(var_id, var);
+            self.bindings.push(Binding::Used(var_id));
+            self.push_code(Opcode::CopyRegister { dest: free_reg, src })?;
+            return Ok(())
+        }
 
         while index < self.bindings.len() {
             let binding = self.bindings[index];

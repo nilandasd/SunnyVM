@@ -157,12 +157,17 @@ mod test {
 
             let temp = gen.get_temp();
 
+            // do some juggling
+
             gen.call(baz, temp)?;
             gen.print(temp)?;
+            gen.copy(temp, baz)?;
+            gen.call(temp, baz)?;
+            gen.print(baz)?;
+            gen.copy(baz, temp)?;
             gen.call(baz, temp)?;
             gen.print(temp)?;
-            gen.call(baz, temp)?;
-            gen.print(temp)?;
+
             gen.gen_return(temp)?;
 
             Ok(())

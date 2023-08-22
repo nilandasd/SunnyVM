@@ -122,7 +122,6 @@ impl Thread {
         let globals = self.globals.get(mem);
         let instr = self.instr.get(mem);
 
-        // Establish a 256-register window into the stack from the stack base
         stack.access_slice(mem, |full_stack| {
             let stack_base = self.stack_base.get() as usize;
             let window = &mut full_stack[stack_base..stack_base + 256];
@@ -131,9 +130,6 @@ impl Thread {
             match opcode {
                 Opcode::NoOp => return Ok(EvalStatus::Pending),
 
-                // Set the return register to the given register's value and pop the top call
-                // frame, updating the instruction stream to the previous call frame's saved state.
-                // If the call frame stack is empty, the program completed.
                 Opcode::Return { reg } => {
                     let result = window[reg as usize].get_ptr();
                     window[RETURN_REG].set_to_ptr(result);
@@ -279,12 +275,7 @@ impl Thread {
                     dest
                 } => {
                     let binding = window[function as usize].get(mem);
-
-                    // To avoid duplicating code in function and partial
-                    // application cases, this is declared as a closure so it
-                    // can access local variables
                     let new_call_frame = |function| -> Result<(), RuntimeError> {
-                        // Modify the current call frame, saving the return ip
                         let current_frame_ip = instr.get_next_ip();
                         frames.access_slice(mem, |f| {
                             f.last()
@@ -314,6 +305,8 @@ impl Thread {
 
                         Ok(())
                     };
+
+                    println!("{}",*binding);
 
                     match *binding {
                         Value::Function(function) => {
