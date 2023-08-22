@@ -91,7 +91,7 @@ mod test {
         let mut data = vec![];
         f.read_to_end(&mut data).unwrap();
         let output_str = String::from_utf8(data).unwrap();
-        fs::remove_file(file_name);
+        fs::remove_file(file_name).unwrap();
 
         assert!(output_str == expected_output);
     }
@@ -115,7 +115,7 @@ mod test {
 
             Ok(())
         }
-        vm_test_helper(case, "test_add.test", "1\n2\n3\n");
+        vm_test_helper(case, "vm_add.test", "1\n2\n3\n");
     }
 
     #[test]
@@ -135,7 +135,7 @@ mod test {
 
             Ok(())
         }
-        vm_test_helper(case, "test_sub.test", "-600\n");
+        vm_test_helper(case, "vm_sub.test", "-600\n");
     }
 
     #[test]
@@ -172,6 +172,59 @@ mod test {
 
             Ok(())
         }
-        vm_test_helper(case, "test_call.test", "95\n95\n95\n");
+        vm_test_helper(case, "vm_call.test", "95\n95\n95\n");
+    }
+
+    #[test]
+    fn test_nested_func_call() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let baz = gen.decl_var("baz".to_string());
+
+            //FUNC DEF ==
+                gen.push_func(vec![])?;
+                let foo = gen.decl_var("foo".to_string());
+                let bar = gen.decl_var("bar".to_string());
+                let temp = gen.get_temp();
+                let temp3 = gen.get_temp();
+                gen.load_num(foo, 12)?;
+                gen.load_num(bar, 83)?;
+                gen.add(temp, bar, foo)?;
+
+            // FUNC DEF =============
+                    gen.push_func(vec![])?;
+                    let qux = gen.decl_var("qux".to_string());
+                    let qaz = gen.decl_var("qaz".to_string());
+                    let temp2 = gen.get_temp();
+                    gen.load_num(qux, 3)?;
+                    gen.load_num(qaz, 2)?;
+                    gen.add(temp2, qux, qaz)?;
+                    gen.gen_return(temp2)?;
+                    gen.pop_func(temp3)?;
+            // FUNC DEF ==============
+
+                gen.call(temp3, foo)?;
+                gen.add(temp, temp, foo)?;
+                gen.gen_return(temp)?;
+
+                gen.pop_func(baz)?;
+
+            let temp = gen.get_temp();
+
+            // do some juggling
+
+            gen.call(baz, temp)?;
+            gen.print(temp)?;
+            gen.copy(temp, baz)?;
+            gen.call(temp, baz)?;
+            gen.print(baz)?;
+            gen.copy(baz, temp)?;
+            gen.call(baz, temp)?;
+            gen.print(temp)?;
+
+            gen.gen_return(temp)?;
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_nested_call.test", "100\n100\n100\n");
     }
 }

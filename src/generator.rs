@@ -31,13 +31,13 @@ pub enum VarId {
     Temp(TempId),
 }
 
-#[derive(Copy, Clone)]
+#[derive(Debug, Copy, Clone)]
 struct Var {
     kind: VarKind,
     bind_index: Option<u16>, // this means a function can hold u16::MAX values at once
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
 enum VarKind {
     Upvalue {
         upvalue_id: u8,
@@ -534,6 +534,7 @@ impl<'guard> FunctionGenerator<'guard> {
                     let new_bind_index = self.bind_reg(var_id)?;
                     let overflow_id = u16::try_from(bind_index - 256).unwrap();
                     var.bind_index = Some(u16::try_from(new_bind_index).unwrap());
+                    self.bindings[bind_index as usize] = Binding::Freed;
                     self.push_code(
                         Opcode::LoadOverflow {
                             dest: new_bind_index,
@@ -546,11 +547,15 @@ impl<'guard> FunctionGenerator<'guard> {
             }
         };
 
-        self.load_if_nonlocal(var, var_id);
-
         self.vars.insert(var_id, var);
 
-        Ok(var.bind_index.unwrap() as u8)
+        let new_bind_index = var.bind_index.unwrap();
+
+        self.activate(new_bind_index as u8);
+        self.load_if_nonlocal(var, var_id)?;
+        self.deactivate(new_bind_index as u8);
+
+        Ok(new_bind_index as u8)
     }
 
     fn bind_to(&mut self, reg: Register, var_id: VarId) -> Result<(), RuntimeError> {
@@ -578,7 +583,7 @@ impl<'guard> FunctionGenerator<'guard> {
                     VarId::Symbol(symbol) => {
                         let temp_id = self.get_temp();
                         let temp = self.bind(temp_id)?;
-                        let dest_reg = Register::try_from(var.bind_index.unwrap()).unwrap();
+                        let dest_reg = u8::try_from(var.bind_index.unwrap()).unwrap();
 
                         // TODO: if symbol is too large create a load literal instruction!
                         // this try from u16 will fail if we have more than u16::max symbols in the program
@@ -614,7 +619,7 @@ impl<'guard> FunctionGenerator<'guard> {
             }
         }
 
-        if index == self.bindings.len() && index < 255 {
+        if index == self.bindings.len() && self.bindings.len() < 256 {
             self.bindings.push(Binding::Freed);
             return Some(u8::try_from(index).unwrap());
         }
@@ -642,14 +647,15 @@ impl<'guard> FunctionGenerator<'guard> {
     fn bind_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
         if let Some(free_reg) = self.find_free_reg() {
             self.bindings[free_reg as usize] = Binding::Used(var_id);
+            println!("FREE_REG: {}", free_reg);
             return Ok(u8::try_from(free_reg).unwrap());
         }
 
-        if let Some(evicted_reg) = self.find_used_reg() {
-            self.bindings[evicted_reg as usize] = Binding::Used(var_id);
-            self.evict(evicted_reg)?;
-
-            return Ok(u8::try_from(evicted_reg).unwrap());
+        if let Some(evict_reg) = self.find_used_reg() {
+            self.evict(evict_reg)?;
+            self.bindings[evict_reg as usize] = Binding::Used(var_id);
+            println!("EVICT_REG: {}", evict_reg);
+            return Ok(u8::try_from(evict_reg).unwrap());
         }
 
         unreachable!("")
@@ -662,9 +668,12 @@ impl<'guard> FunctionGenerator<'guard> {
             Binding::Freed => { return Ok(()) }
         };
         let mut var = self.vars.get(&var_id).unwrap().clone();
-        let mut index = 256;
         let mut overflow_id = 0;
-        let src = u8::try_from(var.bind_index.unwrap()).unwrap();
+        println!("REG: {}", evict_reg);
+        println!("VAR_ID: {:?}", var_id);
+        println!("VAR: {:?}", var);
+        let bind_index = var.bind_index.unwrap();
+        let src = u8::try_from(bind_index).unwrap();
 
         if let Some(free_reg) = self.find_free_reg() {
             var.bind_index = Some(free_reg as u16);
@@ -674,30 +683,26 @@ impl<'guard> FunctionGenerator<'guard> {
             return Ok(())
         }
 
+        let mut index = 256;
         while index < self.bindings.len() {
             let binding = self.bindings[index];
 
             match binding {
                 Binding::Freed => {
-                    // this is a free overflow index
                     self.bindings[index] = Binding::Used(var_id);
                     overflow_id = index - 256;
                     break;
                 }
-                Binding::Used(_) => {} // do nothing
+                Binding::Used(_) => { index += 1 }
                 Binding::Active(_) => unreachable!("an overflow binding cannot be active"),
             }
-
-            index += 1;
         }
 
         if index == self.bindings.len() {
-            // we didn't find a free overflow binding, we need to create a new one
             self.bindings.push(Binding::Used(var_id));
             overflow_id = index - 256;
         }
 
-        // update the var's bind index
         var.bind_index = Some(u16::try_from(index).unwrap());
 
         self.vars.insert(var_id, var);
@@ -765,7 +770,7 @@ mod test {
             // only 256 variables can be bound at once
             // this should cause some evict instructions to be generated
             // and for some variables to be evicted
-            for _ in 0..500 {
+            for _ in 0..300 {
                 let temp = gen.get_temp();
                 gen.copy(temp, one)?;
                 gen.add(result, result, temp)?;

@@ -23,8 +23,10 @@ impl CallFrame {
         let overflow = if overflow_capacity == 0 {
             None
         } else {
-            Some(CellPtr::new_with(List::alloc_with_capacity(mem, overflow_capacity as u32)?))
+            let overflow_list = List::alloc_with_capacity(mem, overflow_capacity as u32)?;
+            Some(CellPtr::new_with(overflow_list))
         };
+
 
         Ok(CallFrame {
             function: CellPtr::new_with(main_fn),

@@ -487,8 +487,11 @@ impl Thread {
                     let frame = frames.top(mem)?;
                     let overflow = frame.overflow(mem).unwrap();
                     let value = window[src as usize].get(mem);
-
-                    overflow.set(mem, overflow_id as u32, TaggedCellPtr::new_with(value))?;
+                    if (overflow_id as u32) < overflow.length() {
+                        overflow.set(mem, overflow_id as u32, TaggedCellPtr::new_with(value))?;
+                    } else {
+                        StackAnyContainer::push(&*overflow, mem, value)?;
+                    }
                 }
 
                 Opcode::Print { dest } => {
