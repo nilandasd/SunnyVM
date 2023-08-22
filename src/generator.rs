@@ -1,18 +1,18 @@
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 use std::marker::PhantomData;
-use std::cell::RefCell;
 
 use zapalloc::ArraySize;
 
-use crate::tagged_ptr::{TaggedPtr, Value};
-use crate::safe_ptr::{ScopedPtr, CellPtr, TaggedScopedPtr, TaggedCellPtr};
-use crate::bytecode::{ByteCode, LiteralId, JumpOffset};
-use crate::bytecode::{Register, Opcode};
+use crate::bytecode::{ByteCode, JumpOffset, LiteralId};
+use crate::bytecode::{Opcode, Register};
 use crate::error::RuntimeError;
-use crate::memory::{Mutator, MutatorView, SymbolId};
-use crate::thread::Thread;
 use crate::function::Function;
+use crate::memory::{Mutator, MutatorView, SymbolId};
+use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
+use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::thread::Thread;
 
 pub type Offset = u32;
 type TempId = usize;
@@ -82,11 +82,7 @@ impl<T: Compiler> Mutator for MetaGenerator<T> {
     type Input = T;
     type Output = CellPtr<Thread>;
 
-    fn run(
-        &self,
-        view: &MutatorView,
-        compiler: Self::Input,
-    ) -> Result<Self::Output, RuntimeError> {
+    fn run(&self, view: &MutatorView, compiler: Self::Input) -> Result<Self::Output, RuntimeError> {
         let global_func = Function::new_default(view)?;
         let mut generator = Generator::new(view)?;
         let thread = CellPtr::from(Thread::alloc(view)?);
@@ -113,11 +109,12 @@ impl Var {
 }
 
 impl<'guard> Generator<'guard> {
-    pub fn new(
-        mem: &'guard MutatorView<'guard>,
-    ) -> Result<Generator<'guard>, RuntimeError> {
+    pub fn new(mem: &'guard MutatorView<'guard>) -> Result<Generator<'guard>, RuntimeError> {
         let function = Function::new_default(mem)?;
-        Ok(Generator { mem, function_stack: vec![FunctionGenerator::new(function, mem)]})
+        Ok(Generator {
+            mem,
+            function_stack: vec![FunctionGenerator::new(function, mem)],
+        })
     }
 
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<(), RuntimeError> {
@@ -179,7 +176,7 @@ impl<'guard> Generator<'guard> {
         }
     }
 
-   pub  fn find_and_close_var(&mut self, name: String) -> Result<VarId, RuntimeError> {
+    pub fn find_and_close_var(&mut self, name: String) -> Result<VarId, RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         if let Value::Symbol(sym_id) = self.mem.lookup_sym(&name).value() {
             let var_id = VarId::Symbol(sym_id);
@@ -188,7 +185,11 @@ impl<'guard> Generator<'guard> {
                 if func_gen.is_declared(var_id) {
                     let reg_offset = func_gen.bind(var_id)?;
 
-                    self.function_stack[top_idx].close_var(u8::try_from(frame_offset).unwrap(), reg_offset, var_id);
+                    self.function_stack[top_idx].close_var(
+                        u8::try_from(frame_offset).unwrap(),
+                        reg_offset,
+                        var_id,
+                    );
                     return Ok(var_id);
                 }
             }
@@ -208,13 +209,11 @@ impl<'guard> Generator<'guard> {
     // targets the top function
     pub fn push_func(&mut self, args: Vec<String>) -> Result<(), RuntimeError> {
         // TODO use the args!!!
-        
-        self.function_stack.push(
-            FunctionGenerator::new(
-                Function::new_default(self.mem)?,
-                self.mem
-            )
-        );
+
+        self.function_stack.push(FunctionGenerator::new(
+            Function::new_default(self.mem)?,
+            self.mem,
+        ));
 
         Ok(())
     }
@@ -234,35 +233,42 @@ impl<'guard> FunctionGenerator<'guard> {
         let temp_counter = 0;
         let is_closure = false;
 
-        FunctionGenerator { function, bindings, vars, temp_counter, mem, is_closure }
+        FunctionGenerator {
+            function,
+            bindings,
+            vars,
+            temp_counter,
+            mem,
+            is_closure,
+        }
     }
 
     pub fn decl_var(&mut self, new_var_kind: VarKind, var_id: VarId) -> VarId {
         if let Some(existing_var) = self.vars.get(&var_id) {
             match existing_var.kind {
                 VarKind::Local => panic!("VarId was already declared in this scope!"),
-                VarKind::Global => {
-                    match new_var_kind {
-                        VarKind::Global => return var_id,
-                        VarKind::Local => {
-                            if let Some(bind_idx) = existing_var.bind_index {
-                                self.bindings[bind_idx as usize] = Binding::Freed;
-                            }
-                        },
-                        VarKind::Temp | VarKind::Upvalue { .. } => unreachable!("decl kind is always local or global"),
-                    }
-                }
-                VarKind::Upvalue { .. } => {
-                    match new_var_kind {
-                        VarKind::Global => unreachable!("cannot have an upvalue in the global scope"),
-                        VarKind::Local => {
-                            if let Some(bind_idx) = existing_var.bind_index {
-                                self.bindings[bind_idx as usize] = Binding::Freed;
-                            }
+                VarKind::Global => match new_var_kind {
+                    VarKind::Global => return var_id,
+                    VarKind::Local => {
+                        if let Some(bind_idx) = existing_var.bind_index {
+                            self.bindings[bind_idx as usize] = Binding::Freed;
                         }
-                        VarKind::Temp | VarKind::Upvalue { .. } => unreachable!("decl kind is always local or global"),
                     }
-                }
+                    VarKind::Temp | VarKind::Upvalue { .. } => {
+                        unreachable!("decl kind is always local or global")
+                    }
+                },
+                VarKind::Upvalue { .. } => match new_var_kind {
+                    VarKind::Global => unreachable!("cannot have an upvalue in the global scope"),
+                    VarKind::Local => {
+                        if let Some(bind_idx) = existing_var.bind_index {
+                            self.bindings[bind_idx as usize] = Binding::Freed;
+                        }
+                    }
+                    VarKind::Temp | VarKind::Upvalue { .. } => {
+                        unreachable!("decl kind is always local or global")
+                    }
+                },
                 VarKind::Temp => unreachable!("temp variable found with symbol id"),
             }
         }
@@ -280,7 +286,7 @@ impl<'guard> FunctionGenerator<'guard> {
     pub fn load_and_close_func(
         &mut self,
         var_id: VarId,
-        func_ptr: ScopedPtr<'guard, Function>
+        func_ptr: ScopedPtr<'guard, Function>,
     ) -> Result<(), RuntimeError> {
         let literal_id = self.push_lit(func_ptr.as_tagged(self.mem))?;
         let dest = self.bind(var_id)?;
@@ -314,7 +320,9 @@ impl<'guard> FunctionGenerator<'guard> {
 
         let mut call_site: Register = 0;
         for (reg, binding) in self.bindings.iter().enumerate() {
-            if 255 < reg { break; }
+            if 255 < reg {
+                break;
+            }
 
             match binding {
                 Binding::Freed => {}
@@ -334,10 +342,13 @@ impl<'guard> FunctionGenerator<'guard> {
 
         if (call_site == 255) && (self.bindings[255] != Binding::Freed) {
             self.evict(255)?;
-        } 
+        }
 
         self.bind_to(call_site, dest)?;
-        self.push_code(Opcode::Call { function, dest: call_site })?;
+        self.push_code(Opcode::Call {
+            function,
+            dest: call_site,
+        })?;
         self.deactivate(function);
 
         Ok(())
@@ -345,7 +356,7 @@ impl<'guard> FunctionGenerator<'guard> {
 
     pub fn add(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
         let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
-        
+
         self.push_code(Opcode::Add { dest, reg1, reg2 })?;
         self.store_destination_if_nonlocal(dest_var)?;
         self.deactivate(dest);
@@ -357,8 +368,12 @@ impl<'guard> FunctionGenerator<'guard> {
 
     pub fn sub(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
         let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
-        
-        self.push_code(Opcode::Subtract { dest, left: reg1, right: reg2 })?;
+
+        self.push_code(Opcode::Subtract {
+            dest,
+            left: reg1,
+            right: reg2,
+        })?;
         self.store_destination_if_nonlocal(dest_var)?;
         self.deactivate(dest);
         self.deactivate(reg1);
@@ -380,7 +395,10 @@ impl<'guard> FunctionGenerator<'guard> {
             // load the literal
             todo!("load num as")
         } else {
-            self.push_code(Opcode::LoadInteger { dest, integer: i16::try_from(num).unwrap() })?;
+            self.push_code(Opcode::LoadInteger {
+                dest,
+                integer: i16::try_from(num).unwrap(),
+            })?;
         }
 
         Ok(())
@@ -421,16 +439,16 @@ impl<'guard> FunctionGenerator<'guard> {
         &mut self,
         var1: VarId,
         var2: VarId,
-        var3: VarId
+        var3: VarId,
     ) -> Result<(Register, Register, Register), RuntimeError> {
         self.activate_if_bound(var1);
         self.activate_if_bound(var2);
         self.activate_if_bound(var3);
-        
+
         let reg1 = self.bind(var1)?;
         self.activate(reg1);
 
-        let reg2= self.bind(var2)?;
+        let reg2 = self.bind(var2)?;
         self.activate(reg2);
 
         let reg3 = self.bind(var3)?;
@@ -474,16 +492,28 @@ impl<'guard> FunctionGenerator<'guard> {
 
                         // TODO: if symbol is too large create a load literal instruction!
                         // this try from u16 will fail if we have more than u16::max symbols in the program
-                        self.push_code(Opcode::LoadSymbol { dest: temp, symbol: u16::try_from(symbol).unwrap() })?;
-                        self.push_code(Opcode::StoreGlobal { src: dest_reg, name: temp })?;
+                        self.push_code(Opcode::LoadSymbol {
+                            dest: temp,
+                            symbol: u16::try_from(symbol).unwrap(),
+                        })?;
+                        self.push_code(Opcode::StoreGlobal {
+                            src: dest_reg,
+                            name: temp,
+                        })?;
 
                         self.free(dest); // destination can be freed since the value was stored in the global
                         self.free(temp_id);
                     }
-                    VarId::Temp(_) => {unreachable!("global cannot be temp")}
+                    VarId::Temp(_) => {
+                        unreachable!("global cannot be temp")
+                    }
                 }
             }
-            VarKind::Upvalue { upvalue_id, frame_offset, frame_register } => {
+            VarKind::Upvalue {
+                upvalue_id,
+                frame_offset,
+                frame_register,
+            } => {
                 unimplemented!("have yet to implement storing upvalues")
             }
             _ => {}
@@ -499,7 +529,7 @@ impl<'guard> FunctionGenerator<'guard> {
             Binding::Used(var_id) => {
                 self.bindings[reg as usize] = Binding::Active(var_id);
             }
-            Binding::Active(_) => {}, //already active, do nothing
+            Binding::Active(_) => {} //already active, do nothing
         }
     }
 
@@ -507,7 +537,7 @@ impl<'guard> FunctionGenerator<'guard> {
         match self.bindings[reg as usize] {
             Binding::Active(var_id) => {
                 self.bindings[reg as usize] = Binding::Used(var_id);
-            },
+            }
             _ => {}
         }
     }
@@ -535,14 +565,13 @@ impl<'guard> FunctionGenerator<'guard> {
                     let overflow_id = u16::try_from(bind_index - 256).unwrap();
                     var.bind_index = Some(u16::try_from(new_bind_index).unwrap());
                     self.bindings[bind_index as usize] = Binding::Freed;
-                    self.push_code(
-                        Opcode::LoadOverflow {
-                            dest: new_bind_index,
-                            overflow_id
+                    self.push_code(Opcode::LoadOverflow {
+                        dest: new_bind_index,
+                        overflow_id,
                     })?;
                 } else {
                     // nothing to do we already got a good binding :)
-                    return Ok(var.bind_index.unwrap() as u8)
+                    return Ok(var.bind_index.unwrap() as u8);
                 }
             }
         };
@@ -587,15 +616,27 @@ impl<'guard> FunctionGenerator<'guard> {
 
                         // TODO: if symbol is too large create a load literal instruction!
                         // this try from u16 will fail if we have more than u16::max symbols in the program
-                        self.push_code(Opcode::LoadSymbol { dest: temp, symbol: u16::try_from(symbol).unwrap() })?;
-                        self.push_code(Opcode::LoadGlobal { dest: dest_reg, name: temp })?;
+                        self.push_code(Opcode::LoadSymbol {
+                            dest: temp,
+                            symbol: u16::try_from(symbol).unwrap(),
+                        })?;
+                        self.push_code(Opcode::LoadGlobal {
+                            dest: dest_reg,
+                            name: temp,
+                        })?;
 
                         self.free(temp_id);
                     }
-                    VarId::Temp(_) => {unreachable!("global cannot be temp")}
+                    VarId::Temp(_) => {
+                        unreachable!("global cannot be temp")
+                    }
                 }
             }
-            VarKind::Upvalue { upvalue_id, frame_offset, frame_register} => {
+            VarKind::Upvalue {
+                upvalue_id,
+                frame_offset,
+                frame_register,
+            } => {
                 // if the variable is an upvalue create a load upvalue instr
                 unimplemented!("cannot bind upvalues yet")
             }
@@ -615,7 +656,9 @@ impl<'guard> FunctionGenerator<'guard> {
                 Binding::Freed => {
                     return Some(u8::try_from(index).unwrap());
                 }
-                _ => { index += 1; }
+                _ => {
+                    index += 1;
+                }
             }
         }
 
@@ -637,7 +680,9 @@ impl<'guard> FunctionGenerator<'guard> {
                 Binding::Used(_) => {
                     return Some(u8::try_from(index).unwrap());
                 }
-                _ => { index += 1; }
+                _ => {
+                    index += 1;
+                }
             }
         }
 
@@ -665,7 +710,7 @@ impl<'guard> FunctionGenerator<'guard> {
         let var_id = match self.bindings[evict_reg as usize] {
             Binding::Active(_) => panic!("tried to evict active register"),
             Binding::Used(var_id) => var_id,
-            Binding::Freed => { return Ok(()) }
+            Binding::Freed => return Ok(()),
         };
         let mut var = self.vars.get(&var_id).unwrap().clone();
         let mut overflow_id = 0;
@@ -679,8 +724,11 @@ impl<'guard> FunctionGenerator<'guard> {
             var.bind_index = Some(free_reg as u16);
             self.vars.insert(var_id, var);
             self.bindings.push(Binding::Used(var_id));
-            self.push_code(Opcode::CopyRegister { dest: free_reg, src })?;
-            return Ok(())
+            self.push_code(Opcode::CopyRegister {
+                dest: free_reg,
+                src,
+            })?;
+            return Ok(());
         }
 
         let mut index = 256;
@@ -693,7 +741,7 @@ impl<'guard> FunctionGenerator<'guard> {
                     overflow_id = index - 256;
                     break;
                 }
-                Binding::Used(_) => { index += 1 }
+                Binding::Used(_) => index += 1,
                 Binding::Active(_) => unreachable!("an overflow binding cannot be active"),
             }
         }
@@ -709,7 +757,7 @@ impl<'guard> FunctionGenerator<'guard> {
 
         self.push_code(Opcode::StoreOverflow {
             overflow_id: u16::try_from(overflow_id).unwrap(),
-            src
+            src,
         })?;
 
         Ok(())
@@ -731,16 +779,19 @@ impl<'guard> FunctionGenerator<'guard> {
         let mut var: &Var = self.vars.get(&var_id).unwrap();
 
         match var.bind_index {
-            None => {},
+            None => {}
             Some(idx) => {
                 self.bindings[idx as usize] = Binding::Freed;
             }
         }
 
-        self.vars.insert(var_id, Var {
-            kind: var.kind,
-            bind_index: None,
-        });
+        self.vars.insert(
+            var_id,
+            Var {
+                kind: var.kind,
+                bind_index: None,
+            },
+        );
     }
 
     // called when the function generator is popped off the function stack
@@ -785,7 +836,7 @@ mod test {
     #[test]
     fn test_overflow() {
         let mut vm = SVM::new();
-        let test_compiler = OverflowTestCompiler{};
+        let test_compiler = OverflowTestCompiler {};
 
         vm.compile(test_compiler).expect("compiles");
         vm.execute().expect("no errors");

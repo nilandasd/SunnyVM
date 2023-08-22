@@ -1,13 +1,13 @@
 use std::cell::Cell;
 
-use crate::container::Container;
-use crate::list::List;
-use crate::safe_ptr::CellPtr;
-use crate::function::Function;
 use crate::array::{Array, ArraySize};
-use crate::safe_ptr::{ScopedPtr, MutatorScope};
+use crate::container::Container;
 use crate::error::RuntimeError;
+use crate::function::Function;
+use crate::list::List;
 use crate::memory::MutatorView;
+use crate::safe_ptr::CellPtr;
+use crate::safe_ptr::{MutatorScope, ScopedPtr};
 
 #[derive(Clone)]
 pub struct CallFrame {
@@ -18,7 +18,10 @@ pub struct CallFrame {
 }
 
 impl CallFrame {
-    pub fn new_main<'guard>(main_fn: ScopedPtr<'guard, Function>, mem: &'guard MutatorView) -> Result<CallFrame, RuntimeError> {
+    pub fn new_main<'guard>(
+        main_fn: ScopedPtr<'guard, Function>,
+        mem: &'guard MutatorView,
+    ) -> Result<CallFrame, RuntimeError> {
         let overflow_capacity = (*main_fn).overflow_capacity();
         let overflow = if overflow_capacity == 0 {
             None
@@ -26,7 +29,6 @@ impl CallFrame {
             let overflow_list = List::alloc_with_capacity(mem, overflow_capacity as u32)?;
             Some(CellPtr::new_with(overflow_list))
         };
-
 
         Ok(CallFrame {
             function: CellPtr::new_with(main_fn),
@@ -46,7 +48,10 @@ impl CallFrame {
         let overflow = if overflow_capacity == 0 {
             None
         } else {
-            Some(CellPtr::new_with(List::alloc_with_capacity(mem, overflow_capacity as u32)?))
+            Some(CellPtr::new_with(List::alloc_with_capacity(
+                mem,
+                overflow_capacity as u32,
+            )?))
         };
 
         Ok(CallFrame {
@@ -57,7 +62,10 @@ impl CallFrame {
         })
     }
 
-    pub fn overflow<'guard>(&self, guard: &'guard dyn MutatorScope) -> Option<ScopedPtr<'guard, List>> {
+    pub fn overflow<'guard>(
+        &self,
+        guard: &'guard dyn MutatorScope,
+    ) -> Option<ScopedPtr<'guard, List>> {
         match &self.overflow {
             None => None,
             Some(cell_ptr) => Some(cell_ptr.get(guard)),

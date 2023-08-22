@@ -12,9 +12,8 @@ use std::slice::from_raw_parts_mut;
 pub use zapalloc::{AllocObject, ArraySize};
 
 use crate::container::{
-    AnyContainerFromSlice, Container, ContainerFromSlice,
-    FillAnyContainer, FillContainer, IndexedAnyContainer, IndexedContainer, SliceableContainer,
-    StackAnyContainer, StackContainer,
+    AnyContainerFromSlice, Container, ContainerFromSlice, FillAnyContainer, FillContainer,
+    IndexedAnyContainer, IndexedContainer, SliceableContainer, StackAnyContainer, StackContainer,
 };
 use crate::error::{ErrorKind, RuntimeError};
 use crate::header::TypeList;
@@ -515,8 +514,7 @@ impl Print for Array<TaggedCellPtr> {
 #[cfg(test)]
 mod test {
     use super::{
-        Array, Container, IndexedAnyContainer, IndexedContainer,
-        StackAnyContainer, StackContainer,
+        Array, Container, IndexedAnyContainer, IndexedContainer, StackAnyContainer, StackContainer,
     };
     use crate::error::{ErrorKind, RuntimeError};
     use crate::memory::{Memory, Mutator, MutatorView};

@@ -27,7 +27,7 @@ pub type NumArgs = u8;
 pub enum Opcode {
     NoOp,
     Print {
-        dest: Register
+        dest: Register,
     },
     Return {
         reg: Register,
@@ -131,7 +131,7 @@ pub enum Opcode {
     StoreOverflow {
         overflow_id: OverflowId,
         src: Register,
-    }
+    },
 }
 
 pub type ArrayOpcode = Array<Opcode>;
@@ -187,10 +187,8 @@ impl ByteCode {
         literal_id: LiteralId,
     ) -> Result<(), RuntimeError> {
         // TODO clone anything mutable
-        self.code.push(
-            mem,
-            Opcode::LoadLiteral { dest, literal_id }
-        )
+        self.code
+            .push(mem, Opcode::LoadLiteral { dest, literal_id })
     }
 
     pub fn push_lit<'guard>(

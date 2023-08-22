@@ -1,11 +1,11 @@
-use std::io::{self, Cursor, Write, Read};
-use std::fs::{self, File};
 use std::cell::RefCell;
+use std::fs::{self, File};
+use std::io::{self, Cursor, Read, Write};
 
-use crate::memory::Memory;
 use crate::error::RuntimeError;
-use crate::memory::{MutatorView, Mutator};
-use crate::generator::{MetaGenerator, Compiler};
+use crate::generator::{Compiler, MetaGenerator};
+use crate::memory::Memory;
+use crate::memory::{Mutator, MutatorView};
 use crate::safe_ptr::CellPtr;
 use crate::thread::Thread;
 
@@ -46,11 +46,7 @@ impl Mutator for SVM {
     type Input = (); // command line args?
     type Output = ();
 
-    fn run(
-        &self,
-        view: &MutatorView,
-        _input: Self::Input,
-    ) -> Result<Self::Output, RuntimeError> {
+    fn run(&self, view: &MutatorView, _input: Self::Input) -> Result<Self::Output, RuntimeError> {
         let thread = self.thread.as_ref().unwrap().get(view);
         let mut stream = self.output_stream.borrow_mut();
         thread.execute(view, &mut stream)?;
@@ -64,7 +60,7 @@ mod test {
     use crate::generator::Generator;
 
     struct TestCompiler {
-        test_case: fn(gen: &mut Generator) -> Result<(), RuntimeError>
+        test_case: fn(gen: &mut Generator) -> Result<(), RuntimeError>,
     }
 
     impl Compiler for TestCompiler {
@@ -75,9 +71,9 @@ mod test {
 
     // test name should end in .test so they can be cleaned up
     fn vm_test_helper(
-        test_case: fn(&mut Generator)->Result<(), RuntimeError>,
+        test_case: fn(&mut Generator) -> Result<(), RuntimeError>,
         file_name: &str,
-        expected_output: &str
+        expected_output: &str,
     ) {
         let mut vm = SVM::new();
         let compiler = TestCompiler { test_case };
@@ -181,32 +177,32 @@ mod test {
             let baz = gen.decl_var("baz".to_string());
 
             //FUNC DEF ==
-                gen.push_func(vec![])?;
-                let foo = gen.decl_var("foo".to_string());
-                let bar = gen.decl_var("bar".to_string());
-                let temp = gen.get_temp();
-                let temp3 = gen.get_temp();
-                gen.load_num(foo, 12)?;
-                gen.load_num(bar, 83)?;
-                gen.add(temp, bar, foo)?;
+            gen.push_func(vec![])?;
+            let foo = gen.decl_var("foo".to_string());
+            let bar = gen.decl_var("bar".to_string());
+            let temp = gen.get_temp();
+            let temp3 = gen.get_temp();
+            gen.load_num(foo, 12)?;
+            gen.load_num(bar, 83)?;
+            gen.add(temp, bar, foo)?;
 
             // FUNC DEF =============
-                    gen.push_func(vec![])?;
-                    let qux = gen.decl_var("qux".to_string());
-                    let qaz = gen.decl_var("qaz".to_string());
-                    let temp2 = gen.get_temp();
-                    gen.load_num(qux, 3)?;
-                    gen.load_num(qaz, 2)?;
-                    gen.add(temp2, qux, qaz)?;
-                    gen.gen_return(temp2)?;
-                    gen.pop_func(temp3)?;
+            gen.push_func(vec![])?;
+            let qux = gen.decl_var("qux".to_string());
+            let qaz = gen.decl_var("qaz".to_string());
+            let temp2 = gen.get_temp();
+            gen.load_num(qux, 3)?;
+            gen.load_num(qaz, 2)?;
+            gen.add(temp2, qux, qaz)?;
+            gen.gen_return(temp2)?;
+            gen.pop_func(temp3)?;
             // FUNC DEF ==============
 
-                gen.call(temp3, foo)?;
-                gen.add(temp, temp, foo)?;
-                gen.gen_return(temp)?;
+            gen.call(temp3, foo)?;
+            gen.add(temp, temp, foo)?;
+            gen.gen_return(temp)?;
 
-                gen.pop_func(baz)?;
+            gen.pop_func(baz)?;
 
             let temp = gen.get_temp();
 

@@ -1,7 +1,6 @@
 use std::cell::Cell;
 use std::fmt;
 
-use zapalloc::ArraySize;
 use crate::container::{Container, HashIndexedAnyContainer};
 use crate::error::{ErrorKind, RuntimeError};
 use crate::memory::MutatorView;
@@ -9,6 +8,7 @@ use crate::printer::Print;
 use crate::raw_array::{default_array_growth, RawArray};
 use crate::safe_ptr::{MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
 use crate::tagged_ptr::Value;
+use zapalloc::ArraySize;
 
 // max load factor before resizing the table
 const LOAD_FACTOR: f32 = 0.80;

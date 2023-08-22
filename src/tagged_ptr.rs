@@ -3,14 +3,14 @@ use std::ptr::NonNull;
 
 use zapalloc::{AllocRaw, RawPtr};
 
-use crate::array::{ArrayU8, ArrayU16, ArrayU32, ArrayU64};
+use crate::array::{ArrayU16, ArrayU32, ArrayU64, ArrayU8};
 use crate::dict::Dict;
-use crate::function::{Function, Closure};
+use crate::function::{Closure, Function};
 use crate::list::List;
 use crate::memory::{HeapStorage, SymbolId};
 use crate::number::NumberObject;
-use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_SYMBOL};
 use crate::printer::Print;
+use crate::ptr_ops::{get_tag, ScopedRef, Tagged, TAG_NUMBER, TAG_OBJECT, TAG_SYMBOL};
 use crate::safe_ptr::{MutatorScope, ScopedPtr};
 use crate::text::Text;
 use crate::upvalue::Upvalue;
@@ -112,10 +112,10 @@ impl FatPtr {
             FatPtr::Dict(raw_ptr) => Value::Dict(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard))),
             FatPtr::Function(raw_ptr) => {
                 Value::Function(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
-            },
+            }
             FatPtr::Closure(raw_ptr) => {
                 Value::Closure(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard)))
-            },
+            }
             FatPtr::List(raw_ptr) => Value::List(ScopedPtr::new(guard, raw_ptr.scoped_ref(guard))),
             FatPtr::Nil => Value::Nil,
             FatPtr::Number(num) => Value::Number(*num),

@@ -1,14 +1,14 @@
-use std::convert::TryFrom;
 use std::cell::Cell;
+use std::convert::TryFrom;
 use std::fmt;
 
-use crate::memory::MutatorView;
-use crate::safe_ptr::ScopedPtr;
 use crate::array::{Array, ArrayU64};
-use crate::printer::Print;
-use crate::safe_ptr::{MutatorScope, CellPtr};
+use crate::container::{Container, IndexedContainer, StackContainer};
 use crate::error::RuntimeError;
-use crate::container::{IndexedContainer, StackContainer, Container};
+use crate::memory::MutatorView;
+use crate::printer::Print;
+use crate::safe_ptr::ScopedPtr;
+use crate::safe_ptr::{CellPtr, MutatorScope};
 
 pub const TAG_NUM_MAX: isize = isize::MAX / 4;
 pub const TAG_NUM_MIN: isize = isize::MIN / 4;
@@ -35,22 +35,21 @@ impl NumberObject {
             u64::try_from(integer * -1)
         } else {
             u64::try_from(integer)
-        }.unwrap();
+        }
+        .unwrap();
 
         data.push(mem, uint)?;
 
-        mem.alloc(
-            NumberObject {
-                data: CellPtr::from(data),
-                negative: Cell::from(integer < 0),
-            }
-        )
+        mem.alloc(NumberObject {
+            data: CellPtr::from(data),
+            negative: Cell::from(integer < 0),
+        })
     }
 
     pub fn sub<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         if rhs.negative.get() == self.negative.get() {
             self.logical_sub(rhs, mem)
@@ -62,7 +61,7 @@ impl NumberObject {
     pub fn add<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         if rhs.negative.get() == self.negative.get() {
             self.logical_add(rhs, mem)
@@ -74,7 +73,7 @@ impl NumberObject {
     pub fn cmp<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<NumObjRelation, RuntimeError> {
         if self.negative.get() && !rhs.negative.get() {
             Ok(NumObjRelation::Less)
@@ -84,12 +83,9 @@ impl NumberObject {
             Ok(self.unsigned_cmp(rhs, mem)?)
         } else {
             match self.unsigned_cmp(rhs, mem)? {
-                NumObjRelation::Less =>
-                    Ok(NumObjRelation::Greater),
-                NumObjRelation::Greater =>
-                    Ok(NumObjRelation::Greater),
-                NumObjRelation::Equal =>
-                    Ok(NumObjRelation::Equal),
+                NumObjRelation::Less => Ok(NumObjRelation::Greater),
+                NumObjRelation::Greater => Ok(NumObjRelation::Greater),
+                NumObjRelation::Equal => Ok(NumObjRelation::Equal),
             }
         }
     }
@@ -97,7 +93,7 @@ impl NumberObject {
     fn logical_add<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         let result = self.unsigned_add(rhs, mem)?;
         result.negative.set(rhs.negative.get());
@@ -107,7 +103,7 @@ impl NumberObject {
     fn logical_sub<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         match self.unsigned_cmp(rhs, mem)? {
             NumObjRelation::Greater => {
@@ -115,9 +111,7 @@ impl NumberObject {
                 result.negative.set(self.negative.get());
                 Ok(result)
             }
-            NumObjRelation::Equal => {
-                Ok(NumberObject::alloc_from_isize(0, mem)?)
-            }
+            NumObjRelation::Equal => Ok(NumberObject::alloc_from_isize(0, mem)?),
             NumObjRelation::Less => {
                 let result = rhs.unsigned_sub(self, mem)?;
                 result.negative.set(!rhs.negative.get());
@@ -129,7 +123,7 @@ impl NumberObject {
     fn unsigned_cmp<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<NumObjRelation, RuntimeError> {
         let lhs_data = self.data.get(mem);
         let rhs_data = rhs.data.get(mem);
@@ -163,7 +157,7 @@ impl NumberObject {
     fn unsigned_sub<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         let result_obj = NumberObject::alloc_from_isize(0, mem)?;
         let result_data = result_obj.data.get(mem);
@@ -198,12 +192,10 @@ impl NumberObject {
                     }
                 }
                 Err(_) => {
-                    let n = u64::try_from(
-                        temp + (u64::MAX as i128)
-                    ).unwrap();
+                    let n = u64::try_from(temp + (u64::MAX as i128)).unwrap();
                     result_data.push(mem, n)?;
                     carry_flag = true;
-                } 
+                }
             }
 
             index += 1;
@@ -215,7 +207,7 @@ impl NumberObject {
     fn unsigned_add<'guard>(
         &self,
         rhs: &NumberObject,
-        mem: &'guard MutatorView
+        mem: &'guard MutatorView,
     ) -> Result<ScopedPtr<'guard, NumberObject>, RuntimeError> {
         let result_obj = NumberObject::alloc_from_isize(0, mem)?;
         let result_data = result_obj.data.get(mem);
@@ -257,7 +249,7 @@ impl NumberObject {
                     let n = (temp - (u64::MAX as u128)) as u64;
                     result_data.push(mem, n)?;
                     carry_flag = true;
-                } 
+                }
             }
 
             index += 1;
@@ -278,7 +270,6 @@ impl Print for NumberObject {
         unsafe {
             for n in self.data.get(guard).as_slice(guard).iter().rev() {
                 write!(f, "{}\t", n);
-
             }
         }
 
@@ -319,7 +310,7 @@ mod test {
         }
 
         let test = Test {};
-        
+
         mem.mutate(&test, ()).unwrap();
     }
 
@@ -344,7 +335,7 @@ mod test {
                 let four = three.add(&one, mem)?; // max * 4
                 let minus_two = two.sub(&four, mem)?; // max * 2 * -1
                 let zero2 = two.add(&minus_two, mem)?; // 0
-                                         
+
                 assert!(NumObjRelation::Less == minus_two.cmp(&one, mem)?);
                 assert!(NumObjRelation::Less == zero.cmp(&one, mem)?);
                 assert!(NumObjRelation::Less == one.cmp(&two, mem)?);

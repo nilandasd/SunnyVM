@@ -1,9 +1,9 @@
 use std::error::Error;
-use std::str::Utf8Error;
 use std::fmt;
 use std::io;
+use std::str::Utf8Error;
 
-use zapalloc::{BlockError, AllocError};
+use zapalloc::{AllocError, BlockError};
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct SourcePos {

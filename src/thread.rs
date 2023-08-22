@@ -3,22 +3,20 @@ use std::io::{self, Write};
 
 use crate::array::ArraySize;
 use crate::bytecode::{ByteCode, InstructionStream, Opcode};
+use crate::callframe::{CallFrame, CallFrameList};
 use crate::container::{
-    Container, FillAnyContainer, HashIndexedAnyContainer, IndexedContainer,
-    SliceableContainer, StackAnyContainer, StackContainer,
+    Container, FillAnyContainer, HashIndexedAnyContainer, IndexedContainer, SliceableContainer,
+    StackAnyContainer, StackContainer,
 };
 use crate::dict::Dict;
 use crate::error::{err_eval, RuntimeError};
-use crate::function::{Function, Closure};
+use crate::function::{Closure, Function};
 use crate::list::List;
 use crate::memory::MutatorView;
-use crate::safe_ptr::{
-    CellPtr, MutatorScope, ScopedPtr, TaggedScopedPtr, TaggedCellPtr
-};
-use crate::tagged_ptr::{TaggedPtr, Value};
-use crate::upvalue::{Upvalue, env_upvalue_lookup};
-use crate::callframe::{CallFrame, CallFrameList};
 use crate::number::{NumberObject, TAG_NUM_MAX, TAG_NUM_MIN};
+use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
+use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::upvalue::{env_upvalue_lookup, Upvalue};
 
 pub const RETURN_REG: usize = 0;
 pub const ENV_REG: usize = 1;
@@ -71,9 +69,7 @@ impl Thread {
 
         // Convert the location integer to a TaggedScopedPtr for passing
         // into the Thread's upvalues Dict
-        let location_ptr = TaggedScopedPtr::new(
-            guard, TaggedPtr::number(location as isize)
-        );
+        let location_ptr = TaggedScopedPtr::new(guard, TaggedPtr::number(location as isize));
 
         // Lookup upvalue in upvalues dict
         match upvalues.lookup(guard, location_ptr) {
@@ -100,9 +96,7 @@ impl Thread {
             Err(_) => {
                 let upvalues = self.upvalues.get(mem);
                 let upvalue = Upvalue::alloc(mem, location)?;
-                let location_ptr = TaggedScopedPtr::new(
-                    mem, TaggedPtr::number(location as isize)
-                );
+                let location_ptr = TaggedScopedPtr::new(mem, TaggedPtr::number(location as isize));
                 upvalues.assoc(mem, location_ptr, upvalue.as_tagged(mem))?;
 
                 Ok((location_ptr, upvalue))
@@ -168,7 +162,7 @@ impl Thread {
                 // non-container type. Set the `dest` register to "true" or `nil`.
                 Opcode::IsAtom { dest, test } => {
                     todo!()
-                        /*
+                    /*
                     let test_val = window[test as usize].get(mem);
 
                     match *test_val {
@@ -246,15 +240,12 @@ impl Thread {
                         match lookup_result {
                             Ok(binding) => window[dest as usize].set(binding),
                             Err(_) => {
-                                window[dest as usize].set(
-                                    TaggedScopedPtr::new(mem, TaggedPtr::nil())
-                                );
+                                window[dest as usize]
+                                    .set(TaggedScopedPtr::new(mem, TaggedPtr::nil()));
                             }
                         }
                     } else {
-                        return Err(
-                            err_eval("Cannot lookup global for non-symbol type")
-                        );
+                        return Err(err_eval("Cannot lookup global for non-symbol type"));
                     }
                 }
 
@@ -264,16 +255,11 @@ impl Thread {
                         let src_val = window[src as usize].get(mem);
                         globals.assoc(mem, name_val, src_val)?;
                     } else {
-                        return Err(
-                            err_eval("Cannot bind global to non-symbol type")
-                        );
+                        return Err(err_eval("Cannot bind global to non-symbol type"));
                     }
                 }
 
-                Opcode::Call {
-                    function,
-                    dest
-                } => {
+                Opcode::Call { function, dest } => {
                     let binding = window[function as usize].get(mem);
                     let new_call_frame = |function| -> Result<(), RuntimeError> {
                         let current_frame_ip = instr.get_next_ip();
@@ -285,11 +271,8 @@ impl Thread {
                         });
 
                         // Create a new call frame, pushing it to the frame stack
-                        let new_stack_base =
-                            self.stack_base.get() + dest as ArraySize;
-                        let frame = CallFrame::new(
-                            function, 0, new_stack_base, mem
-                        )?;
+                        let new_stack_base = self.stack_base.get() + dest as ArraySize;
+                        let frame = CallFrame::new(function, 0, new_stack_base, mem)?;
                         frames.push(mem, frame)?;
 
                         // Update the instruction stream to point to the new function
@@ -306,7 +289,7 @@ impl Thread {
                         Ok(())
                     };
 
-                    println!("{}",*binding);
+                    println!("{}", *binding);
 
                     match *binding {
                         Value::Function(function) => {
@@ -377,14 +360,14 @@ impl Thread {
 
                     match (val1, val2) {
                         (Value::NumberObject(num_obj1), Value::NumberObject(num_obj2)) => {
-                                let result = num_obj1.add(&num_obj2, mem)?;
-                                let tagged_result = result.as_tagged(mem).get_ptr();
+                            let result = num_obj1.add(&num_obj2, mem)?;
+                            let tagged_result = result.as_tagged(mem).get_ptr();
 
-                                window[dest as usize].set_to_ptr(tagged_result);
+                            window[dest as usize].set_to_ptr(tagged_result);
                         }
-                        (Value::Number(num), Value::NumberObject(num_obj)) | 
-                         (Value::NumberObject(num_obj), Value::Number(num)) => {
-                             // add a method for add isize to a num object
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            // add a method for add isize to a num object
                             todo!()
                         }
                         (Value::Number(num1), Value::Number(num2)) => {
@@ -400,10 +383,11 @@ impl Thread {
 
                             window[dest as usize].set_to_ptr(tagged_result);
                         }
-                        _ => {unimplemented!("have yet to implement add for non number types")}
+                        _ => {
+                            unimplemented!("have yet to implement add for non number types")
+                        }
                     }
-
-                },
+                }
 
                 // TODO
                 Opcode::Subtract { dest, left, right } => {
@@ -412,14 +396,14 @@ impl Thread {
 
                     match (val1, val2) {
                         (Value::NumberObject(num_obj1), Value::NumberObject(num_obj2)) => {
-                                let result = num_obj1.sub(&num_obj2, mem)?;
-                                let tagged_result = result.as_tagged(mem).get_ptr();
+                            let result = num_obj1.sub(&num_obj2, mem)?;
+                            let tagged_result = result.as_tagged(mem).get_ptr();
 
-                                window[dest as usize].set_to_ptr(tagged_result);
+                            window[dest as usize].set_to_ptr(tagged_result);
                         }
-                        (Value::Number(num), Value::NumberObject(num_obj)) | 
-                         (Value::NumberObject(num_obj), Value::Number(num)) => {
-                             // add a method for add isize to a num object
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            // add a method for add isize to a num object
                             todo!()
                         }
                         (Value::Number(num1), Value::Number(num2)) => {
@@ -435,7 +419,9 @@ impl Thread {
 
                             window[dest as usize].set_to_ptr(tagged_result);
                         }
-                        _ => {unimplemented!("have yet to implement add for non number types")}
+                        _ => {
+                            unimplemented!("have yet to implement add for non number types")
+                        }
                     }
                 }
 
@@ -451,13 +437,13 @@ impl Thread {
                     let closure_env = window[ENV_REG].get(mem);
                     let upvalue = env_upvalue_lookup(mem, closure_env, src)?;
                     window[dest as usize].set_to_ptr(upvalue.get(mem, stack)?);
-                },
+                }
 
                 Opcode::StoreUpvalue { dest, src } => {
                     let closure_env = window[ENV_REG].get(mem);
                     let upvalue = env_upvalue_lookup(mem, closure_env, dest)?;
                     upvalue.set(mem, stack, window[src as usize].get_ptr())?;
-                },
+                }
 
                 // Move up to 3 stack register values to the Upvalue objects referring to them
                 Opcode::CloseUpvalues { reg1, reg2, reg3 } => {
@@ -611,25 +597,18 @@ impl Thread {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::memory::{Memory, Mutator};
     use crate::list::List;
+    use crate::memory::{Memory, Mutator};
     use crate::safe_ptr::{ScopedPtr, TaggedScopedPtr};
 
     fn test_helper<'guard>(
         view: &'guard MutatorView,
-        bytecode: ScopedPtr<'guard, ByteCode>
+        bytecode: ScopedPtr<'guard, ByteCode>,
     ) -> Result<TaggedScopedPtr<'guard>, RuntimeError> {
         let thread = Thread::alloc(view).unwrap();
         let list = List::alloc(view).unwrap();
         let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
-        let function = Function::alloc(
-            view,
-            nil_ptr,
-            list,
-            bytecode,
-            None,
-            0
-        ).unwrap();
+        let function = Function::alloc(view, nil_ptr, list, bytecode, None, 0).unwrap();
 
         let cell_stream: RefCell<Box<dyn Write>> = RefCell::new(Box::new(io::stdout()));
         let stream = &mut *cell_stream.borrow_mut();
@@ -651,7 +630,6 @@ mod test {
                 view: &MutatorView,
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
-
                 let bytecode = ByteCode::alloc(view).unwrap();
                 let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
 
@@ -659,7 +637,7 @@ mod test {
                     bytecode.push(view, Opcode::NoOp)?;
                 }
 
-                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+                bytecode.push(view, Opcode::Return { reg: 0 })?;
 
                 let result = test_helper(view, bytecode);
 
@@ -687,12 +665,19 @@ mod test {
                 view: &MutatorView,
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
-
                 let bytecode = ByteCode::alloc(view).unwrap();
-                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+                let literal_id = bytecode
+                    .push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69)))
+                    .unwrap();
 
-                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id})?;
-                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+                bytecode.push(
+                    view,
+                    Opcode::LoadLiteral {
+                        dest: 0,
+                        literal_id,
+                    },
+                )?;
+                bytecode.push(view, Opcode::Return { reg: 0 })?;
 
                 let result = test_helper(view, bytecode).unwrap().value();
 
@@ -724,14 +709,21 @@ mod test {
                 view: &MutatorView,
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
-
                 let bytecode = ByteCode::alloc(view).unwrap();
                 let nil_ptr = TaggedScopedPtr::new(view, TaggedPtr::nil());
-                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+                let literal_id = bytecode
+                    .push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69)))
+                    .unwrap();
 
-                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id })?;
-                bytecode.push(view, Opcode::LoadNil{ dest: 0 })?;
-                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+                bytecode.push(
+                    view,
+                    Opcode::LoadLiteral {
+                        dest: 0,
+                        literal_id,
+                    },
+                )?;
+                bytecode.push(view, Opcode::LoadNil { dest: 0 })?;
+                bytecode.push(view, Opcode::Return { reg: 0 })?;
 
                 let result = test_helper(view, bytecode).unwrap();
 
@@ -759,15 +751,42 @@ mod test {
                 view: &MutatorView,
                 _input: Self::Input,
             ) -> Result<Self::Output, RuntimeError> {
-
                 let bytecode = ByteCode::alloc(view).unwrap();
-                let literal_id = bytecode.push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69))).unwrap();
+                let literal_id = bytecode
+                    .push_lit(view, TaggedScopedPtr::new(view, TaggedPtr::number(69)))
+                    .unwrap();
 
-                bytecode.push(view, Opcode::LoadLiteral{ dest: 0, literal_id })?;
-                bytecode.push(view, Opcode::LoadLiteral{ dest: 1, literal_id })?;
-                bytecode.push(view, Opcode::Add{ dest: 0, reg1: 0, reg2: 1})?;
-                bytecode.push(view, Opcode::Add{ dest: 0, reg1: 0, reg2: 1})?;
-                bytecode.push(view, Opcode::Return{ reg: 0 })?;
+                bytecode.push(
+                    view,
+                    Opcode::LoadLiteral {
+                        dest: 0,
+                        literal_id,
+                    },
+                )?;
+                bytecode.push(
+                    view,
+                    Opcode::LoadLiteral {
+                        dest: 1,
+                        literal_id,
+                    },
+                )?;
+                bytecode.push(
+                    view,
+                    Opcode::Add {
+                        dest: 0,
+                        reg1: 0,
+                        reg2: 1,
+                    },
+                )?;
+                bytecode.push(
+                    view,
+                    Opcode::Add {
+                        dest: 0,
+                        reg1: 0,
+                        reg2: 1,
+                    },
+                )?;
+                bytecode.push(view, Opcode::Return { reg: 0 })?;
 
                 let result = test_helper(view, bytecode).unwrap();
 

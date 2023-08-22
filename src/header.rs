@@ -2,10 +2,11 @@ use zapalloc::{
     AllocHeader, AllocObject, AllocRaw, AllocTypeId, ArraySize, Mark, RawPtr, SizeClass,
 };
 
-use crate::array::{ArrayU16, ArrayU32, ArrayU8, ArrayU64};
+use crate::array::{ArrayU16, ArrayU32, ArrayU64, ArrayU8};
 use crate::bytecode::{ArrayOpcode, ByteCode, InstructionStream};
+use crate::callframe::CallFrameList;
 use crate::dict::Dict;
-use crate::function::{Function, Closure};
+use crate::function::{Closure, Function};
 use crate::list::List;
 use crate::memory::HeapStorage;
 use crate::number::NumberObject;
@@ -13,7 +14,6 @@ use crate::ptr_ops::{AsNonNull, Tagged};
 use crate::tagged_ptr::FatPtr;
 use crate::text::Text;
 use crate::thread::Thread;
-use crate::callframe::CallFrameList;
 use crate::upvalue::Upvalue;
 
 #[repr(u16)]

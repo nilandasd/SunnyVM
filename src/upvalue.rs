@@ -1,11 +1,11 @@
 use std::cell::Cell;
 
 use crate::array::ArraySize;
-use crate::safe_ptr::{TaggedCellPtr, ScopedPtr, MutatorScope, TaggedScopedPtr};
-use crate::memory::MutatorView;
+use crate::container::{IndexedAnyContainer, IndexedContainer};
 use crate::error::RuntimeError;
 use crate::list::List;
-use crate::container::{IndexedContainer, IndexedAnyContainer};
+use crate::memory::MutatorView;
+use crate::safe_ptr::{MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
 use crate::tagged_ptr::{TaggedPtr, Value};
 
 // A closure upvalue as generally described by Lua 5.1 implementation.

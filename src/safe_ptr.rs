@@ -2,11 +2,11 @@ use std::cell::Cell;
 use std::fmt;
 use std::ops::Deref;
 
-use zapalloc::{RawPtr, AllocObject};
+use zapalloc::{AllocObject, RawPtr};
 
 use crate::header::TypeList;
-use crate::ptr_ops::ScopedRef;
 use crate::printer::Print;
+use crate::ptr_ops::ScopedRef;
 use crate::tagged_ptr::{FatPtr, TaggedPtr, Value};
 
 pub trait MutatorScope {}

@@ -1,6 +1,6 @@
-use zapalloc::{ZapHeap, RawPtr, AllocObject, AllocRaw, ArraySize};
 use std::cell::RefCell;
 use std::collections::HashMap;
+use zapalloc::{AllocObject, AllocRaw, ArraySize, RawPtr, ZapHeap};
 
 use crate::error::RuntimeError;
 use crate::header::{ObjectHeader, TypeList};

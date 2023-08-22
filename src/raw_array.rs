@@ -63,7 +63,6 @@ impl<T: Sized> RawArray<T> {
         mem: &'scope MutatorView,
         new_capacity: u32,
     ) -> Result<(), RuntimeError> {
-
         if new_capacity == 0 {
             self.capacity = 0;
             self.ptr = None;

@@ -29,19 +29,15 @@ pub struct Function {
 }
 
 impl Function {
-    pub fn new_default<'guard>(
-        mem: &'guard MutatorView,
-    ) -> Result<Function, RuntimeError> {
-        Ok(
-            Function {
-                name: TaggedCellPtr::new_nil(),
-                arity: 0,
-                code: CellPtr::new_with(ByteCode::alloc(mem)?),
-                param_names: CellPtr::new_with(List::alloc(mem)?),
-                nonlocal_refs: TaggedCellPtr::new_nil(),
-                overflow_capacity: 0,
-            }
-        )
+    pub fn new_default<'guard>(mem: &'guard MutatorView) -> Result<Function, RuntimeError> {
+        Ok(Function {
+            name: TaggedCellPtr::new_nil(),
+            arity: 0,
+            code: CellPtr::new_with(ByteCode::alloc(mem)?),
+            param_names: CellPtr::new_with(List::alloc(mem)?),
+            nonlocal_refs: TaggedCellPtr::new_nil(),
+            overflow_capacity: 0,
+        })
     }
 
     /// Allocate a Function object on the heap.
