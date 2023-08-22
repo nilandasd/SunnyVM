@@ -113,6 +113,11 @@ impl<'guard> Generator<'guard> {
         })
     }
 
+    pub fn nop(&mut self) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].nop()
+    }
+
     pub fn new_list(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].new_list(var_id)
@@ -319,6 +324,11 @@ impl<'guard> FunctionGenerator<'guard> {
             todo!()
         }
 
+        Ok(())
+    }
+
+    pub fn nop(&mut self) -> Result<(), RuntimeError> {
+        self.push_code(Opcode::NoOp)?;
         Ok(())
     }
 
