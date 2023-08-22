@@ -132,6 +132,27 @@ pub enum Opcode {
         overflow_id: OverflowId,
         src: Register,
     },
+    NewList {
+        dest: Register,
+    },
+    SetList {
+        list: Register,
+        index: Register,
+        src: Register,
+    },
+    GetList {
+        list: Register,
+        index: Register,
+        dest: Register,
+    },
+    PushList {
+        list: Register,
+        src: Register,
+    },
+    PopList {
+        list: Register,
+        dest: Register,
+    },
 }
 
 pub type ArrayOpcode = Array<Opcode>;

@@ -84,8 +84,6 @@ impl Thread {
         }
     }
 
-    // Retrieve an Upvalue for the given absolute stack offset or allocate a new one if none was
-    // found
     fn upvalue_lookup_or_alloc<'guard>(
         &self,
         mem: &'guard MutatorView,
@@ -389,7 +387,6 @@ impl Thread {
                     }
                 }
 
-                // TODO
                 Opcode::Subtract { dest, left, right } => {
                     let val1 = window[left as usize].get(mem).value();
                     let val2 = window[right as usize].get(mem).value();
@@ -431,8 +428,6 @@ impl Thread {
                 // TODO
                 Opcode::DivideInteger { dest, num, denom } => unimplemented!(),
 
-                // Follow the indirection of an Upvalue to retrieve the value, copy the value to a
-                // local register
                 Opcode::LoadUpvalue { dest, src } => {
                     let closure_env = window[ENV_REG].get(mem);
                     let upvalue = env_upvalue_lookup(mem, closure_env, src)?;
@@ -445,10 +440,9 @@ impl Thread {
                     upvalue.set(mem, stack, window[src as usize].get_ptr())?;
                 }
 
-                // Move up to 3 stack register values to the Upvalue objects referring to them
                 Opcode::CloseUpvalues { reg1, reg2, reg3 } => {
                     for reg in &[reg1, reg2, reg3] {
-                        // Registers 0 and 1 cannot be closed over
+                        // Registers 0 and 1 cannot be closed over TODO: is this logic right?
                         if *reg >= FIRST_ARG_REG as u8 {
                             // calculate absolute stack offset of reg
                             let location = stack_base as ArraySize + *reg as ArraySize;
@@ -483,13 +477,64 @@ impl Thread {
                 Opcode::Print { dest } => {
                     write!(output_stream, "{}\n", window[dest as usize].get(mem))?;
                 }
+
+                Opcode::NewList { dest } => {
+                    let new_list = List::alloc(mem)?;
+                    window[dest as usize].set_to_ptr(new_list.as_tagged(mem).get_ptr());
+                }
+
+                Opcode::SetList { list, index, src } => {
+                    let list_ptr = window[list as usize].get(mem);
+                    let src_ptr = window[src as usize].get(mem);
+                    let index = window[index as usize].get(mem).value();
+                    if let Value::List(list) = *list_ptr {
+                        match index {
+                            Value::Number(num) => {
+                                list.set(mem, num as u32, TaggedCellPtr::from(src_ptr))?;
+                            }
+                            _ => return Err(err_eval("Cannot index array with non-number type")),
+                        }
+                    }
+                }
+
+                Opcode::GetList { list, index, dest } => {
+                    let list_ptr = window[list as usize].get(mem);
+                    let index = window[index as usize].get(mem).value();
+                    if let Value::List(list) = *list_ptr {
+                        match index {
+                            Value::Number(num) => {
+                                let list_val = list.get(mem, num as u32)?;
+
+                                window[dest as usize].set_to_ptr(list_val.get_ptr());
+                            }
+                            _ => return Err(err_eval("Cannot index array with non-number type")),
+                        }
+                    }
+                }
+
+                Opcode::PushList { list, src } => {
+                    let list_ptr = window[list as usize].get(mem);
+                    let src_ptr = window[src as usize].get(mem);
+
+                    if let Value::List(list) = *list_ptr {
+                        StackAnyContainer::push(&*list, mem, src_ptr)?;
+                    }
+                }
+
+                Opcode::PopList { list, dest } => {
+                    let list_ptr = window[list as usize].get(mem);
+
+                    if let Value::List(list) = *list_ptr {
+                        let value = StackAnyContainer::pop(&*list, mem)?;
+                        window[dest as usize].set_to_ptr(value.get_ptr());
+                    }
+                }
             }
 
             Ok(EvalStatus::Pending)
         })
     }
 
-    // Given ByteCode, execute up to max_instr more instructions
     pub fn eval_stream<'guard>(
         &self,
         mem: &'guard MutatorView,

@@ -223,4 +223,43 @@ mod test {
         }
         vm_test_helper(case, "vm_nested_call.test", "100\n100\n100\n");
     }
+
+    #[test]
+    fn test_array() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let foo = gen.decl_var("foo".to_string());
+            let bar = gen.decl_var("bar".to_string());
+            let t1 = gen.get_temp();
+            let t2 = gen.get_temp();
+            let t3 = gen.get_temp();
+
+            gen.load_num(bar, 500)?;
+            gen.new_list(foo)?;
+            gen.push_list(foo, bar)?;
+            gen.push_list(foo, bar)?;
+            gen.load_num(t3, 0)?;
+            gen.get_list(foo, t3, t1)?;
+            gen.print(t1)?;
+            gen.load_num(t3, 1)?;
+            gen.get_list(foo, t3, t1)?;
+            gen.print(t1)?;
+            gen.pop_list(foo, t1)?;
+            gen.pop_list(foo, t2)?;
+            gen.add(t1, t1, t2)?;
+            gen.print(t1)?;
+            gen.load_num(t1, -500)?;
+            gen.push_list(foo, bar)?;
+            gen.push_list(foo, t1)?;
+            gen.load_num(t3, 1)?;
+            gen.set_list(foo, t3, t1)?;
+            gen.pop_list(foo, t1)?;
+            gen.pop_list(foo, t2)?;
+            gen.add(t1, t1, t2)?;
+            gen.print(t1)?;
+            gen.gen_return(t1)?;
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_array.test", "500\n500\n1000\n0\n");
+    }
 }

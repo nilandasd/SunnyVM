@@ -117,6 +117,31 @@ impl<'guard> Generator<'guard> {
         })
     }
 
+    pub fn new_list(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].new_list(var_id)
+    }
+
+    pub fn get_list(&mut self, list: VarId, index: VarId, dest: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].get_list(list, index, dest)
+    }
+
+    pub fn set_list(&mut self, list: VarId, index: VarId, src: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].set_list(list, index, src)
+    }
+
+    pub fn push_list(&mut self, list: VarId, src: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].push_list(list, src)
+    }
+
+    pub fn pop_list(&mut self, list: VarId, dest: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].pop_list(list, dest)
+    }
+
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<(), RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].load_num(var_id, num)
@@ -350,6 +375,66 @@ impl<'guard> FunctionGenerator<'guard> {
             dest: call_site,
         })?;
         self.deactivate(function);
+
+        Ok(())
+    }
+
+    pub fn new_list(&mut self, dest_var: VarId) -> Result<(), RuntimeError> {
+        let dest = self.bind(dest_var)?;
+        self.activate(dest);
+
+        self.push_code(Opcode::NewList { dest })?;
+
+        self.store_destination_if_nonlocal(dest_var)?;
+        self.deactivate(dest);
+
+        Ok(())
+    }
+
+    pub fn push_list(&mut self, list_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
+        let list = self.bind(list_var)?;
+        self.activate(list);
+        let src = self.bind(src_var)?;
+
+        self.push_code(Opcode::PushList { list, src })?;
+
+        self.deactivate(list);
+
+        Ok(())
+    }
+
+    pub fn pop_list(&mut self, list_var: VarId, dest_var: VarId) -> Result<(), RuntimeError> {
+        let list = self.bind(list_var)?;
+        self.activate(list);
+        let dest = self.bind(dest_var)?;
+
+        self.push_code(Opcode::PopList { list, dest })?;
+
+        self.deactivate(list);
+
+        Ok(())
+    }
+
+    pub fn set_list(&mut self, list_var: VarId, index_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
+        let (list, index, src) = self.activate_and_bind3(list_var, index_var, src_var)?;
+
+        self.push_code(Opcode::SetList { list, index, src })?;
+
+        self.deactivate(list);
+        self.deactivate(index);
+        self.deactivate(src);
+
+        Ok(())
+    }
+
+    pub fn get_list(&mut self, list_var: VarId, index_var: VarId, dest_var: VarId) -> Result<(), RuntimeError> {
+        let (list, index, dest) = self.activate_and_bind3(list_var, index_var, dest_var)?;
+
+        self.push_code(Opcode::GetList { list, index, dest })?;
+
+        self.deactivate(list);
+        self.deactivate(index);
+        self.deactivate(dest);
 
         Ok(())
     }
