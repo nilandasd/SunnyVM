@@ -59,6 +59,7 @@ mod test {
     use crate::generator::Generator;
     use std::fs::{self, File};
     use std::io::Read;
+    use crate::bytecode::{JumpOffset, JUMP_UNKNOWN};
 
     struct TestCompiler {
         test_case: fn(gen: &mut Generator) -> Result<(), RuntimeError>,
@@ -262,5 +263,23 @@ mod test {
             Ok(())
         }
         vm_test_helper(case, "vm_array.test", "500\n500\n1000\n0\n");
+    }
+
+    #[test]
+    fn test_jump() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let foo = gen.decl_var("foo".to_string());
+            gen.load_num(foo, 1)?;
+            let i0 = gen.jump(JUMP_UNKNOWN)?;
+            let i1 = gen.jump(-9999)?;
+            let i2 = gen.load_num(foo, 777)?;
+            let i3 = gen.print(foo)?;
+
+            gen.backpatch(i0, (i2 - i0) as i16)?;
+            gen.gen_return(foo)?;
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_jump.test", "1\n");
     }
 }

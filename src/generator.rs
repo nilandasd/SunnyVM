@@ -2,8 +2,9 @@ use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::marker::PhantomData;
 
-use crate::bytecode::LiteralId;
-use crate::bytecode::{Opcode, Register};
+use zapalloc::ArraySize;
+
+use crate::bytecode::{LiteralId, JumpOffset, Opcode, Register};
 use crate::error::RuntimeError;
 use crate::function::Function;
 use crate::memory::{Mutator, MutatorView, SymbolId};
@@ -11,7 +12,6 @@ use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedScopedPtr};
 use crate::tagged_ptr::Value;
 use crate::thread::Thread;
 
-pub type Offset = u32;
 type TempId = usize;
 
 pub trait Compiler {
@@ -113,9 +113,37 @@ impl<'guard> Generator<'guard> {
         })
     }
 
-    pub fn nop(&mut self) -> Result<(), RuntimeError> {
+    pub fn nop(&mut self) -> Result<ArraySize, RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].nop()
+    }
+
+    pub fn backpatch(&mut self, index: ArraySize, new_offset: JumpOffset) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].backpatch(index, new_offset)
+    }
+
+    pub fn jump(&mut self, offset: JumpOffset) -> Result<ArraySize, RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].jump(offset)
+    }
+
+    pub fn jump_if_true(
+        &mut self,
+        test: VarId,
+        offset: JumpOffset
+    ) -> Result<ArraySize, RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].jump_if_true(test, offset)
+    }
+
+    pub fn jump_if_not_true(
+        &mut self,
+        test: VarId,
+        offset: JumpOffset
+    ) -> Result<ArraySize, RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].jump_if_not_true(test, offset)
     }
 
     pub fn new_list(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
@@ -143,7 +171,7 @@ impl<'guard> Generator<'guard> {
         self.function_stack[top_idx].pop_list(list, dest)
     }
 
-    pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<(), RuntimeError> {
+    pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].load_num(var_id, num)
     }
@@ -178,7 +206,7 @@ impl<'guard> Generator<'guard> {
         self.function_stack[top_idx].sub(dest, op1, op2)
     }
 
-    pub fn print(&mut self, var: VarId) -> Result<(), RuntimeError> {
+    pub fn print(&mut self, var: VarId) -> Result<ArraySize, RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].print(var)
     }
@@ -327,9 +355,26 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
-    pub fn nop(&mut self) -> Result<(), RuntimeError> {
-        self.push_code(Opcode::NoOp)?;
-        Ok(())
+    pub fn backpatch(&mut self, instruction: ArraySize, offset: JumpOffset) -> Result<(), RuntimeError> {
+        self.function.code(self.mem).update_jump_offset(self.mem, instruction, offset)
+    }
+
+    pub fn jump(&mut self, offset: JumpOffset) -> Result<ArraySize, RuntimeError> {
+        self.push_code(Opcode::Jump { offset })
+    }
+
+    pub fn jump_if_true(&mut self, test_var: VarId, offset: JumpOffset) -> Result<ArraySize, RuntimeError> {
+        let test = self.bind(test_var)?;
+        self.push_code(Opcode::JumpIfTrue { test, offset })
+    }
+
+    pub fn jump_if_not_true(&mut self, test_var: VarId, offset: JumpOffset) -> Result<ArraySize, RuntimeError> {
+        let test = self.bind(test_var)?;
+        self.push_code(Opcode::JumpIfNotTrue { test, offset })
+    }
+
+    pub fn nop(&mut self) -> Result<ArraySize, RuntimeError> {
+        self.push_code(Opcode::NoOp)
     }
 
     pub fn copy(&mut self, dest_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
@@ -473,7 +518,7 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
-    pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<(), RuntimeError> {
+    pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(var_id)?;
 
         // if num < TAG_NUM_MIN || TAG_NUM_MAX < num {
@@ -489,10 +534,8 @@ impl<'guard> FunctionGenerator<'guard> {
             self.push_code(Opcode::LoadInteger {
                 dest,
                 integer: i16::try_from(num).unwrap(),
-            })?;
+            })
         }
-
-        Ok(())
     }
 
     pub fn get_temp(&mut self) -> VarId {
@@ -516,10 +559,9 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
-    pub fn print(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+    pub fn print(&mut self, var_id: VarId) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(var_id)?;
-        self.push_code(Opcode::Print { dest })?;
-        Ok(())
+        self.push_code(Opcode::Print { dest })
     }
 
     // ===================== PRIVATE FUNCS ====================================
@@ -850,7 +892,7 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
-    fn push_code(&self, code: Opcode) -> Result<Offset, RuntimeError> {
+    fn push_code(&self, code: Opcode) -> Result<ArraySize, RuntimeError> {
         let bytecode = self.function.code(self.mem);
         bytecode.push(self.mem, code)?;
         Ok(bytecode.last_instruction())
