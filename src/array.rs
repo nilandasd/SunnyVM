@@ -403,8 +403,6 @@ impl FillAnyContainer for Array<TaggedCellPtr> {
 }
 
 impl StackAnyContainer for Array<TaggedCellPtr> {
-    /// Push can trigger an underlying array resize, hence it requires the ability to allocate
-    // ANCHOR: DefStackAnyContainerArrayPush
     fn push<'guard>(
         &self,
         mem: &'guard MutatorView,
@@ -412,10 +410,7 @@ impl StackAnyContainer for Array<TaggedCellPtr> {
     ) -> Result<(), RuntimeError> {
         StackContainer::<TaggedCellPtr>::push(self, mem, TaggedCellPtr::new_with(item))
     }
-    // ANCHOR_END: DefStackAnyContainerArrayPush
 
-    /// Pop returns None if the container is empty, otherwise moves the last item of the array
-    /// out to the caller.
     fn pop<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -423,7 +418,6 @@ impl StackAnyContainer for Array<TaggedCellPtr> {
         Ok(StackContainer::<TaggedCellPtr>::pop(self, guard)?.get(guard))
     }
 
-    /// Return the value at the top of the stack without removing it
     fn top<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -433,7 +427,6 @@ impl StackAnyContainer for Array<TaggedCellPtr> {
 }
 
 impl IndexedAnyContainer for Array<TaggedCellPtr> {
-    /// Return a pointer to the object at the given index. Bounds-checked.
     fn get<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -442,7 +435,6 @@ impl IndexedAnyContainer for Array<TaggedCellPtr> {
         Ok(self.read_ref(guard, index)?.get(guard))
     }
 
-    /// Set the object pointer at the given index. Bounds-checked.
     fn set<'guard>(
         &self,
         guard: &'guard dyn MutatorScope,
@@ -519,7 +511,7 @@ mod test {
     use crate::error::{ErrorKind, RuntimeError};
     use crate::memory::{Memory, Mutator, MutatorView};
     use crate::safe_ptr::TaggedCellPtr;
-    use crate::tagged_ptr::Value;
+    use crate::dict::Dict;
 
     #[test]
     fn array_generic_push_and_pop() {
@@ -593,7 +585,6 @@ mod test {
         mem.mutate(&test, ()).unwrap();
     }
 
-    /*
     #[test]
     fn arrayany_tagged_pointers() {
         let mem = Memory::new();
@@ -616,7 +607,7 @@ mod test {
                 }
 
                 // or by copy/clone
-                let pair = view.alloc_tagged(Pair::new())?;
+                let pair = view.alloc_tagged(Dict::new())?;
 
                 IndexedAnyContainer::set(&*array, view, 3, pair)?;
 
@@ -627,7 +618,6 @@ mod test {
         let test = Test {};
         mem.mutate(&test, ()).unwrap();
     }
-    */
 
     #[test]
     fn array_with_capacity_and_realloc() {
