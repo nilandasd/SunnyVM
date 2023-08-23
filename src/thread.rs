@@ -475,6 +475,7 @@ impl Thread {
                     window[dest as usize].set_to_ptr(new_list.as_tagged(mem).get_ptr());
                 }
 
+
                 Opcode::SetList { list, index, src } => {
                     let list_ptr = window[list as usize].get(mem);
                     let src_ptr = window[src as usize].get(mem);
@@ -486,6 +487,8 @@ impl Thread {
                             }
                             _ => return Err(err_eval("Cannot index array with non-number type")),
                         }
+                    } else {
+                        return Err(err_eval("Called SetList on non list type"));
                     }
                 }
 
@@ -501,6 +504,8 @@ impl Thread {
                             }
                             _ => return Err(err_eval("Cannot index array with non-number type")),
                         }
+                    } else {
+                        return Err(err_eval("Called GetList on non list type"));
                     }
                 }
 
@@ -510,6 +515,8 @@ impl Thread {
 
                     if let Value::List(list) = *list_ptr {
                         StackAnyContainer::push(&*list, mem, src_ptr)?;
+                    } else {
+                        return Err(err_eval("Called PushList on non list type"));
                     }
                 }
 
@@ -519,6 +526,46 @@ impl Thread {
                     if let Value::List(list) = *list_ptr {
                         let value = StackAnyContainer::pop(&*list, mem)?;
                         window[dest as usize].set_to_ptr(value.get_ptr());
+                    } else {
+                        return Err(err_eval("Called PopList on non list type"));
+                    }
+                }
+
+                Opcode::NewDict { dest } => {
+                    let new_dict = Dict::alloc(mem)?;
+                    window[dest as usize].set_to_ptr(new_dict.as_tagged(mem).get_ptr());
+                }
+
+                Opcode::SetDict { dict, symbol, src } => {
+                    let dict_ptr = window[dict as usize].get(mem);
+                    let src_ptr = window[src as usize].get(mem);
+                    let symbol = window[symbol as usize].get(mem);
+                    if let Value::Dict(dict) = *dict_ptr {
+                        dict.assoc(mem, symbol, src_ptr)?;
+                    } else {
+                        return Err(err_eval("Called SetDict on non dict type"));
+                    }
+                }
+
+                Opcode::GetDict { dict, symbol, dest } => {
+                    let dict_ptr = window[dict as usize].get(mem);
+                    let symbol = window[symbol as usize].get(mem);
+                    if let Value::Dict(dict) = *dict_ptr {
+                        let val = dict.lookup(mem, symbol)?;
+                        window[dest as usize].set_to_ptr(val.get_ptr());
+                    } else {
+                        return Err(err_eval("Called GetDict on non dict type"));
+                    }
+                }
+
+                Opcode::RemoveDict { dict, symbol } => {
+                    let dict_ptr = window[dict as usize].get(mem);
+                    let symbol = window[symbol as usize].get(mem);
+
+                    if let Value::Dict(dict) = *dict_ptr {
+                        dict.dissoc(mem, symbol)?;
+                    } else {
+                        return Err(err_eval("Called GetDict on non dict type"));
                     }
                 }
             }

@@ -152,6 +152,23 @@ pub enum Opcode {
         list: Register,
         dest: Register,
     },
+    NewDict {
+        dest: Register,
+    },
+    SetDict {
+        dict: Register,
+        symbol: Register,
+        src: Register,
+    },
+    GetDict {
+        dict: Register,
+        symbol: Register,
+        dest: Register,
+    },
+    RemoveDict {
+        dict: Register,
+        symbol: Register,
+    },
 }
 
 pub type ArrayOpcode = Array<Opcode>;
