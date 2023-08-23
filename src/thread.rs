@@ -558,12 +558,13 @@ impl Thread {
                     }
                 }
 
-                Opcode::RemoveDict { dict, symbol } => {
+                Opcode::RemoveDict { dict, symbol, dest } => {
                     let dict_ptr = window[dict as usize].get(mem);
                     let symbol = window[symbol as usize].get(mem);
 
                     if let Value::Dict(dict) = *dict_ptr {
-                        dict.dissoc(mem, symbol)?;
+                        let val = dict.dissoc(mem, symbol)?;
+                        window[dest as usize].set_to_ptr(val.get_ptr());
                     } else {
                         return Err(err_eval("Called GetDict on non dict type"));
                     }

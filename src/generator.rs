@@ -146,6 +146,26 @@ impl<'guard> Generator<'guard> {
         self.function_stack[top_idx].jump_if_not_true(test, offset)
     }
 
+    pub fn new_dict(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].new_dict(var_id)
+    }
+
+    pub fn get_dict(&mut self, dict: VarId, sym: VarId, dest: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].get_dict(dict, sym, dest)
+    }
+
+    pub fn set_dict(&mut self, dict: VarId, sym: VarId, src: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].set_dict(dict, sym, src)
+    }
+
+    pub fn remove_dict(&mut self, dict: VarId, sym: VarId, dest: VarId) -> Result<(), RuntimeError> {
+        let top_idx = self.function_stack.len() - 1;
+        self.function_stack[top_idx].remove_dict(dict, sym, dest)
+    }
+
     pub fn new_list(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].new_list(var_id)
@@ -430,15 +450,59 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(())
     }
 
+    pub fn new_dict(&mut self, dest_var: VarId) -> Result<(), RuntimeError> {
+        let dest = self.bind(dest_var)?;
+        self.push_code(Opcode::NewDict { dest })?;
+        self.store_destination_if_nonlocal(dest_var)?;
+        Ok(())
+    }
+
+    pub fn set_dict(
+        &mut self,
+        dict_var: VarId,
+        sym_var: VarId,
+        src_var: VarId
+    ) -> Result<(), RuntimeError> {
+        let (dict, symbol, src) = self.activate_and_bind3(dict_var, sym_var, src_var)?;
+        self.push_code(Opcode::SetDict { dict, symbol, src })?;
+        self.deactivate(dict);
+        self.deactivate(symbol);
+        self.deactivate(src);
+        Ok(())
+    }
+
+    pub fn get_dict(
+        &mut self,
+        dict_var: VarId,
+        sym_var: VarId,
+        dest_var: VarId
+    ) -> Result<(), RuntimeError> {
+        let (dict, symbol, dest) = self.activate_and_bind3(dict_var, sym_var, dest_var)?;
+        self.push_code(Opcode::GetDict { dict, symbol, dest })?;
+        self.deactivate(dict);
+        self.deactivate(symbol);
+        self.deactivate(dest);
+        Ok(())
+    }
+
+    pub fn remove_dict(
+        &mut self,
+        dict_var: VarId,
+        sym_var: VarId,
+        dest_var: VarId
+    ) -> Result<(), RuntimeError> {
+        let (dict, symbol, dest) = self.activate_and_bind3(dict_var, sym_var, dest_var)?;
+        self.push_code(Opcode::RemoveDict { dict, symbol, dest })?;
+        self.deactivate(dict);
+        self.deactivate(symbol);
+        self.deactivate(dest);
+        Ok(())
+    }
+
     pub fn new_list(&mut self, dest_var: VarId) -> Result<(), RuntimeError> {
         let dest = self.bind(dest_var)?;
-        self.activate(dest);
-
         self.push_code(Opcode::NewList { dest })?;
-
         self.store_destination_if_nonlocal(dest_var)?;
-        self.deactivate(dest);
-
         Ok(())
     }
 

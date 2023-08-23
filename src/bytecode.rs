@@ -168,6 +168,7 @@ pub enum Opcode {
     RemoveDict {
         dict: Register,
         symbol: Register,
+        dest: Register,
     },
 }
 
