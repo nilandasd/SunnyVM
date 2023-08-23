@@ -1,9 +1,3 @@
-/// Basic mutable array type:
-///
-///  Array<T>
-///  ArrayU32 = Array<u32>
-///  ArrayU16 = Array<u16>
-///  ArrayU8 = Array<u8>
 use std::cell::Cell;
 use std::fmt;
 use std::ptr::{read, write};
@@ -21,19 +15,11 @@ use crate::memory::MutatorView;
 use crate::printer::Print;
 use crate::raw_array::{default_array_growth, RawArray, DEFAULT_ARRAY_SIZE};
 use crate::safe_ptr::{MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
-use crate::tagged_ptr::Value;
 
-// For a RefCell-style interior mutability pattern
 type BorrowFlag = isize;
 const INTERIOR_ONLY: isize = 0;
 const EXPOSED_MUTABLY: isize = 1;
 
-/// An array, like Vec, but applying an interior mutability pattern.
-///
-/// Implements Container traits, including SliceableContainer.
-/// Since SliceableContainer allows mutable access to the interior
-/// of the array, RefCell-style runtime semantics are employed to
-/// prevent the array being modified outside of the slice borrow.
 #[derive(Clone)]
 pub struct Array<T: Sized + Clone> {
     length: Cell<ArraySize>,
