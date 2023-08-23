@@ -190,29 +190,21 @@ impl Thread {
                 }
 
                 Opcode::JumpIfTrue { test, offset } => {
-                    todo!()
-                    /*
                     let test_val = window[test as usize].get(mem);
-
                     let true_sym = mem.lookup_sym("true"); // TODO preload keyword syms
 
                     if test_val == true_sym {
                         instr.jump(offset)
                     }
-                    */
                 }
 
                 Opcode::JumpIfNotTrue { test, offset } => {
-                    /*
                     let test_val = window[test as usize].get(mem);
-
                     let true_sym = mem.lookup_sym("true");
 
                     if test_val != true_sym {
                         instr.jump(offset)
                     }
-                    */
-                    todo!()
                 }
 
                 Opcode::LoadNil { dest } => {
