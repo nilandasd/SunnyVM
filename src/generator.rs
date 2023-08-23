@@ -231,6 +231,15 @@ impl<'guard> Generator<'guard> {
         self.function_stack[top_idx].print(var)
     }
 
+    pub fn load_sym(&mut self, dest: VarId, name: String) -> Result<(), RuntimeError> {
+        if let Value::Symbol(sym_id) = self.mem.lookup_sym(&name).value() {
+            let top_idx = self.function_stack.len() - 1;
+            self.function_stack[top_idx].load_sym(dest, sym_id);
+            return Ok(());
+        }
+        unreachable!("lookup sym always returns sym id")
+    }
+
     pub fn decl_var(&mut self, name: String) -> VarId {
         if let Value::Symbol(sym_id) = self.mem.lookup_sym(&name).value() {
             let var_kind = if self.is_global_scope() {
@@ -598,6 +607,19 @@ impl<'guard> FunctionGenerator<'guard> {
             self.push_code(Opcode::LoadInteger {
                 dest,
                 integer: i16::try_from(num).unwrap(),
+            })
+        }
+    }
+
+    pub fn load_sym(&mut self, var_id: VarId, sym_id: usize) -> Result<ArraySize, RuntimeError> {
+        let dest = self.bind(var_id)?;
+        // TODO allow for more symbols
+        if sym_id < (u16::MIN as usize) || (u16::MAX as usize) < sym_id {
+            todo!("create symbol literal")
+        } else {
+            self.push_code(Opcode::LoadSymbol {
+                dest,
+                symbol: u16::try_from(sym_id).unwrap(),
             })
         }
     }
