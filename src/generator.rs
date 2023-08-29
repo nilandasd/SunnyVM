@@ -337,6 +337,7 @@ impl<'guard> Generator<'guard> {
 
 // store instructions
 gen3!(get_dict, GetDict, true);
+gen3!(get_list, GetList, true);
 gen3!(remove_dict, RemoveDict, true);
 gen3!(add, Add, true);
 gen3!(sub, Subtract, true);
@@ -344,7 +345,6 @@ gen3!(sub, Subtract, true);
 // non store instructions
 gen3!(set_dict, SetDict, false);
 gen3!(set_list, SetList, false);
-gen3!(get_list, GetList, false);
 
 impl<'guard> FunctionGenerator<'guard> {
     pub fn new(function: Function, mem: &'guard MutatorView<'guard>) -> FunctionGenerator<'guard> {
