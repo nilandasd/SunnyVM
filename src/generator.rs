@@ -12,6 +12,88 @@ use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedScopedPtr};
 use crate::tagged_ptr::Value;
 use crate::thread::Thread;
 
+macro_rules! gen3 {
+    ($fn_name:ident,
+     $opcode:ident,
+     $is_store_instruction:expr
+     ) => {
+        impl<'guard> FunctionGenerator<'guard> {
+            pub fn $fn_name(
+                &mut self,
+                var1: VarId,
+                var2: VarId,
+                var3: VarId
+            ) -> Result<ArraySize, RuntimeError> {
+                let (reg1, reg2, reg3) = self.activate_and_bind3(var1, var2, var3)?;
+                let offset = self.push_code(Opcode::$opcode(reg1, reg2, reg3))?;
+
+                if $is_store_instruction {
+                    self.store_destination_if_nonlocal(var1)?;
+                }
+
+                self.deactivate(reg1);
+                self.deactivate(reg2);
+                self.deactivate(reg3);
+                Ok(offset)
+            }
+        }
+    };
+}
+
+macro_rules! scoped_gen {
+    ($generator:expr, $method:ident) => {{
+        let top_idx = $generator.function_stack.len() - 1;
+        $generator.function_stack[top_idx].$method()
+    }};
+
+    ($generator:expr, $method:ident, $($arg:expr),*) => {{
+        let top_idx = $generator.function_stack.len() - 1;
+        $generator.function_stack[top_idx].$method($($arg),*)
+    }};
+}
+
+macro_rules! gen_to_func_gen3 {
+    ($opcode:ident) => {
+        impl<'guard> Generator<'guard> {
+            pub fn $opcode(
+                &mut self,
+                op1: VarId,
+                op2: VarId,
+                op3: VarId
+            ) -> Result<ArraySize, RuntimeError> {
+                scoped_gen!(self, $opcode, op1, op2, op3)
+            }
+        }
+    };
+}
+
+macro_rules! gen_to_func_gen2 {
+    ($opcode:ident) => {
+        impl<'guard> Generator<'guard> {
+            pub fn $opcode(
+                &mut self,
+                op1: VarId,
+                op2: VarId,
+            ) -> Result<ArraySize, RuntimeError> {
+                scoped_gen!(self, $opcode, op1, op2)
+            }
+        }
+    };
+}
+
+macro_rules! gen_to_func_gen1 {
+    ($opcode:ident) => {
+        impl<'guard> Generator<'guard> {
+            pub fn $opcode(
+                &mut self,
+                op1: VarId,
+            ) -> Result<ArraySize, RuntimeError> {
+                scoped_gen!(self, $opcode, op1)
+            }
+        }
+    };
+}
+
 type TempId = usize;
 
 pub trait Compiler {
@@ -104,6 +186,22 @@ impl Var {
     }
 }
 
+gen_to_func_gen3!(get_list);
+gen_to_func_gen3!(set_list);
+gen_to_func_gen3!(remove_dict);
+gen_to_func_gen3!(set_dict);
+gen_to_func_gen3!(get_dict);
+gen_to_func_gen3!(add);
+gen_to_func_gen3!(sub);
+gen_to_func_gen2!(push_list);
+gen_to_func_gen2!(pop_list);
+gen_to_func_gen2!(copy);
+gen_to_func_gen2!(call);
+gen_to_func_gen1!(new_list);
+gen_to_func_gen1!(new_dict);
+gen_to_func_gen1!(gen_return);
+gen_to_func_gen1!(print);
+
 impl<'guard> Generator<'guard> {
     pub fn new(mem: &'guard MutatorView<'guard>) -> Result<Generator<'guard>, RuntimeError> {
         let function = Function::new_default(mem)?;
@@ -114,18 +212,22 @@ impl<'guard> Generator<'guard> {
     }
 
     pub fn nop(&mut self) -> Result<ArraySize, RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].nop()
+        scoped_gen!(self, nop)
     }
 
-    pub fn backpatch(&mut self, index: ArraySize, new_offset: JumpOffset) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].backpatch(index, new_offset)
+    pub fn backpatch(
+        &mut self,
+        index: ArraySize,
+        new_offset: JumpOffset
+    ) -> Result<(), RuntimeError> {
+        scoped_gen!(self, backpatch, index, new_offset)
     }
 
-    pub fn jump(&mut self, offset: JumpOffset) -> Result<ArraySize, RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].jump(offset)
+    pub fn jump(
+        &mut self,
+        offset: JumpOffset
+    ) -> Result<ArraySize, RuntimeError> {
+        scoped_gen!(self, jump, offset)
     }
 
     pub fn jump_if_true(
@@ -133,8 +235,7 @@ impl<'guard> Generator<'guard> {
         test: VarId,
         offset: JumpOffset
     ) -> Result<ArraySize, RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].jump_if_true(test, offset)
+        scoped_gen!(self, jump_if_true, test, offset)
     }
 
     pub fn jump_if_not_true(
@@ -142,53 +243,7 @@ impl<'guard> Generator<'guard> {
         test: VarId,
         offset: JumpOffset
     ) -> Result<ArraySize, RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].jump_if_not_true(test, offset)
-    }
-
-    pub fn new_dict(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].new_dict(var_id)
-    }
-
-    pub fn get_dict(&mut self, dict: VarId, sym: VarId, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].get_dict(dict, sym, dest)
-    }
-
-    pub fn set_dict(&mut self, dict: VarId, sym: VarId, src: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].set_dict(dict, sym, src)
-    }
-
-    pub fn remove_dict(&mut self, dict: VarId, sym: VarId, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].remove_dict(dict, sym, dest)
-    }
-
-    pub fn new_list(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].new_list(var_id)
-    }
-
-    pub fn get_list(&mut self, list: VarId, index: VarId, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].get_list(list, index, dest)
-    }
-
-    pub fn set_list(&mut self, list: VarId, index: VarId, src: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].set_list(list, index, src)
-    }
-
-    pub fn push_list(&mut self, list: VarId, src: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].push_list(list, src)
-    }
-
-    pub fn pop_list(&mut self, list: VarId, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].pop_list(list, dest)
+        scoped_gen!(self, jump_if_not_true, test, offset)
     }
 
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
@@ -196,47 +251,18 @@ impl<'guard> Generator<'guard> {
         self.function_stack[top_idx].load_num(var_id, num)
     }
 
-    pub fn copy(&mut self, dest: VarId, src: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].copy(dest, src)
-    }
-
-    pub fn call(&mut self, func: VarId, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].call(func, dest)
-    }
-
     pub fn get_temp(&mut self) -> VarId {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].get_temp()
     }
 
-    pub fn gen_return(&mut self, dest: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].gen_return(dest)
-    }
-
-    pub fn add(&mut self, dest: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].add(dest, op1, op2)
-    }
-
-    pub fn sub(&mut self, dest: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].sub(dest, op1, op2)
-    }
-
-    pub fn print(&mut self, var: VarId) -> Result<ArraySize, RuntimeError> {
-        let top_idx = self.function_stack.len() - 1;
-        self.function_stack[top_idx].print(var)
-    }
-
     pub fn load_sym(&mut self, dest: VarId, name: String) -> Result<(), RuntimeError> {
         if let Value::Symbol(sym_id) = self.mem.lookup_sym(&name).value() {
             let top_idx = self.function_stack.len() - 1;
-            self.function_stack[top_idx].load_sym(dest, sym_id);
+            self.function_stack[top_idx].load_sym(dest, sym_id)?;
             return Ok(());
         }
+
         unreachable!("lookup sym always returns sym id")
     }
 
@@ -308,6 +334,17 @@ impl<'guard> Generator<'guard> {
         Ok(())
     }
 }
+
+// store instructions
+gen3!(get_dict, GetDict, true);
+gen3!(remove_dict, RemoveDict, true);
+gen3!(add, Add, true);
+gen3!(sub, Subtract, true);
+
+// non store instructions
+gen3!(set_dict, SetDict, false);
+gen3!(set_list, SetList, false);
+gen3!(get_list, GetList, false);
 
 impl<'guard> FunctionGenerator<'guard> {
     pub fn new(function: Function, mem: &'guard MutatorView<'guard>) -> FunctionGenerator<'guard> {
@@ -406,17 +443,17 @@ impl<'guard> FunctionGenerator<'guard> {
         self.push_code(Opcode::NoOp)
     }
 
-    pub fn copy(&mut self, dest_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
+    pub fn copy(&mut self, dest_var: VarId, src_var: VarId) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(dest_var)?;
         self.activate(dest);
         let src = self.bind(src_var)?;
-        self.push_code(Opcode::CopyRegister { dest, src })?;
+        let offset = self.push_code(Opcode::CopyRegister { dest, src })?;
         self.store_destination_if_nonlocal(dest_var)?;
         self.deactivate(dest);
-        Ok(())
+        Ok(offset)
     }
 
-    pub fn call(&mut self, function: VarId, dest: VarId) -> Result<(), RuntimeError> {
+    pub fn call(&mut self, function: VarId, dest: VarId) -> Result<ArraySize, RuntimeError> {
         let function = self.bind(function)?;
         if function == 255 {
             todo!("functions cannot be called from the last register!")
@@ -450,145 +487,49 @@ impl<'guard> FunctionGenerator<'guard> {
         }
 
         self.bind_to(call_site, dest)?;
-        self.push_code(Opcode::Call {
+        let offset = self.push_code(Opcode::Call {
             function,
             dest: call_site,
         })?;
         self.deactivate(function);
 
-        Ok(())
+        Ok(offset)
     }
 
-    pub fn new_dict(&mut self, dest_var: VarId) -> Result<(), RuntimeError> {
+    pub fn new_dict(&mut self, dest_var: VarId) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(dest_var)?;
-        self.push_code(Opcode::NewDict { dest })?;
+        let offset = self.push_code(Opcode::NewDict { dest })?;
         self.store_destination_if_nonlocal(dest_var)?;
-        Ok(())
+        Ok(offset)
     }
 
-    pub fn set_dict(
-        &mut self,
-        dict_var: VarId,
-        sym_var: VarId,
-        src_var: VarId
-    ) -> Result<(), RuntimeError> {
-        let (dict, symbol, src) = self.activate_and_bind3(dict_var, sym_var, src_var)?;
-        self.push_code(Opcode::SetDict { dict, symbol, src })?;
-        self.deactivate(dict);
-        self.deactivate(symbol);
-        self.deactivate(src);
-        Ok(())
-    }
-
-    pub fn get_dict(
-        &mut self,
-        dict_var: VarId,
-        sym_var: VarId,
-        dest_var: VarId
-    ) -> Result<(), RuntimeError> {
-        let (dict, symbol, dest) = self.activate_and_bind3(dict_var, sym_var, dest_var)?;
-        self.push_code(Opcode::GetDict { dict, symbol, dest })?;
-        self.deactivate(dict);
-        self.deactivate(symbol);
-        self.deactivate(dest);
-        Ok(())
-    }
-
-    pub fn remove_dict(
-        &mut self,
-        dict_var: VarId,
-        sym_var: VarId,
-        dest_var: VarId
-    ) -> Result<(), RuntimeError> {
-        let (dict, symbol, dest) = self.activate_and_bind3(dict_var, sym_var, dest_var)?;
-        self.push_code(Opcode::RemoveDict { dict, symbol, dest })?;
-        self.deactivate(dict);
-        self.deactivate(symbol);
-        self.deactivate(dest);
-        Ok(())
-    }
-
-    pub fn new_list(&mut self, dest_var: VarId) -> Result<(), RuntimeError> {
+    pub fn new_list(&mut self, dest_var: VarId) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(dest_var)?;
-        self.push_code(Opcode::NewList { dest })?;
+        let offset = self.push_code(Opcode::NewList { dest })?;
         self.store_destination_if_nonlocal(dest_var)?;
-        Ok(())
+        Ok(offset)
     }
 
-    pub fn push_list(&mut self, list_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
+    pub fn push_list(&mut self, list_var: VarId, src_var: VarId) -> Result<ArraySize, RuntimeError> {
         let list = self.bind(list_var)?;
         self.activate(list);
         let src = self.bind(src_var)?;
-
-        self.push_code(Opcode::PushList { list, src })?;
-
+        let offset = self.push_code(Opcode::PushList { list, src })?;
         self.deactivate(list);
-
-        Ok(())
+        Ok(offset)
     }
 
-    pub fn pop_list(&mut self, list_var: VarId, dest_var: VarId) -> Result<(), RuntimeError> {
+    pub fn pop_list(
+        &mut self,
+        list_var: VarId,
+        dest_var: VarId
+    ) -> Result<ArraySize, RuntimeError> {
         let list = self.bind(list_var)?;
         self.activate(list);
         let dest = self.bind(dest_var)?;
-
-        self.push_code(Opcode::PopList { list, dest })?;
-
+        let offset = self.push_code(Opcode::PopList { list, dest })?;
         self.deactivate(list);
-
-        Ok(())
-    }
-
-    pub fn set_list(&mut self, list_var: VarId, index_var: VarId, src_var: VarId) -> Result<(), RuntimeError> {
-        let (list, index, src) = self.activate_and_bind3(list_var, index_var, src_var)?;
-
-        self.push_code(Opcode::SetList { list, index, src })?;
-
-        self.deactivate(list);
-        self.deactivate(index);
-        self.deactivate(src);
-
-        Ok(())
-    }
-
-    pub fn get_list(&mut self, list_var: VarId, index_var: VarId, dest_var: VarId) -> Result<(), RuntimeError> {
-        let (list, index, dest) = self.activate_and_bind3(list_var, index_var, dest_var)?;
-
-        self.push_code(Opcode::GetList { list, index, dest })?;
-
-        self.deactivate(list);
-        self.deactivate(index);
-        self.deactivate(dest);
-
-        Ok(())
-    }
-
-    pub fn add(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
-        let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
-
-        self.push_code(Opcode::Add { dest, reg1, reg2 })?;
-        self.store_destination_if_nonlocal(dest_var)?;
-        self.deactivate(dest);
-        self.deactivate(reg1);
-        self.deactivate(reg2);
-
-        Ok(())
-    }
-
-    pub fn sub(&mut self, dest_var: VarId, op1: VarId, op2: VarId) -> Result<(), RuntimeError> {
-        let (dest, reg1, reg2) = self.activate_and_bind3(dest_var, op1, op2)?;
-
-        self.push_code(Opcode::Subtract {
-            dest,
-            left: reg1,
-            right: reg2,
-        })?;
-        self.store_destination_if_nonlocal(dest_var)?;
-        self.deactivate(dest);
-        self.deactivate(reg1);
-        self.deactivate(reg2);
-
-        Ok(())
+        Ok(offset)
     }
 
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
@@ -637,12 +578,9 @@ impl<'guard> FunctionGenerator<'guard> {
         return var_id;
     }
 
-    pub fn gen_return(&mut self, var_id: VarId) -> Result<(), RuntimeError> {
+    pub fn gen_return(&mut self, var_id: VarId) -> Result<ArraySize, RuntimeError> {
         let reg = self.bind(var_id)?;
-
-        self.push_code(Opcode::Return { reg })?;
-
-        Ok(())
+        self.push_code(Opcode::Return { reg })
     }
 
     pub fn print(&mut self, var_id: VarId) -> Result<ArraySize, RuntimeError> {
@@ -907,14 +845,12 @@ impl<'guard> FunctionGenerator<'guard> {
     fn bind_reg(&mut self, var_id: VarId) -> Result<u8, RuntimeError> {
         if let Some(free_reg) = self.find_free_reg() {
             self.bindings[free_reg as usize] = Binding::Used(var_id);
-            println!("FREE_REG: {}", free_reg);
             return Ok(u8::try_from(free_reg).unwrap());
         }
 
         if let Some(evict_reg) = self.find_used_reg() {
             self.evict(evict_reg)?;
             self.bindings[evict_reg as usize] = Binding::Used(var_id);
-            println!("EVICT_REG: {}", evict_reg);
             return Ok(u8::try_from(evict_reg).unwrap());
         }
 
@@ -929,9 +865,6 @@ impl<'guard> FunctionGenerator<'guard> {
         };
         let mut var = self.vars.get(&var_id).unwrap().clone();
         let mut overflow_id = 0;
-        println!("REG: {}", evict_reg);
-        println!("VAR_ID: {:?}", var_id);
-        println!("VAR: {:?}", var);
         let bind_index = var.bind_index.unwrap();
         let src = u8::try_from(bind_index).unwrap();
 

@@ -240,10 +240,10 @@ mod test {
             gen.push_list(foo, bar)?;
             gen.push_list(foo, bar)?;
             gen.load_num(t3, 0)?;
-            gen.get_list(foo, t3, t1)?;
+            gen.get_list(t1, foo, t3)?;
             gen.print(t1)?;
             gen.load_num(t3, 1)?;
-            gen.get_list(foo, t3, t1)?;
+            gen.get_list(t1, foo, t3)?;
             gen.print(t1)?;
             gen.pop_list(foo, t1)?;
             gen.pop_list(foo, t2)?;
@@ -293,7 +293,7 @@ mod test {
             gen.load_sym(bar, "bar".to_string())?;
             gen.new_dict(foo)?;
             gen.set_dict(foo, bar, temp)?;
-            gen.get_dict(foo, bar, foo)?;
+            gen.get_dict(foo, foo, bar)?;
             gen.print(foo)?;
             gen.gen_return(foo)?;
             Ok(())

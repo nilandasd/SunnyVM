@@ -344,7 +344,7 @@ impl Thread {
                     window[dest as usize] = window[src as usize].clone();
                 }
 
-                Opcode::Add { dest, reg1, reg2 } => {
+                Opcode::Add(dest, reg1, reg2) => {
                     let val1 = window[reg1 as usize].get(mem).value();
                     let val2 = window[reg2 as usize].get(mem).value();
 
@@ -379,7 +379,7 @@ impl Thread {
                     }
                 }
 
-                Opcode::Subtract { dest, left, right } => {
+                Opcode::Subtract(dest, left, right) => {
                     let val1 = window[left as usize].get(mem).value();
                     let val2 = window[right as usize].get(mem).value();
 
@@ -476,7 +476,7 @@ impl Thread {
                 }
 
 
-                Opcode::SetList { list, index, src } => {
+                Opcode::SetList(list, index, src) => {
                     let list_ptr = window[list as usize].get(mem);
                     let src_ptr = window[src as usize].get(mem);
                     let index = window[index as usize].get(mem).value();
@@ -492,7 +492,7 @@ impl Thread {
                     }
                 }
 
-                Opcode::GetList { list, index, dest } => {
+                Opcode::GetList(dest, list, index) => {
                     let list_ptr = window[list as usize].get(mem);
                     let index = window[index as usize].get(mem).value();
                     if let Value::List(list) = *list_ptr {
@@ -536,7 +536,7 @@ impl Thread {
                     window[dest as usize].set_to_ptr(new_dict.as_tagged(mem).get_ptr());
                 }
 
-                Opcode::SetDict { dict, symbol, src } => {
+                Opcode::SetDict(dict, symbol, src) => {
                     let dict_ptr = window[dict as usize].get(mem);
                     let src_ptr = window[src as usize].get(mem);
                     let symbol = window[symbol as usize].get(mem);
@@ -547,7 +547,7 @@ impl Thread {
                     }
                 }
 
-                Opcode::GetDict { dict, symbol, dest } => {
+                Opcode::GetDict(dest, dict, symbol) => {
                     let dict_ptr = window[dict as usize].get(mem);
                     let symbol = window[symbol as usize].get(mem);
                     if let Value::Dict(dict) = *dict_ptr {
@@ -558,7 +558,7 @@ impl Thread {
                     }
                 }
 
-                Opcode::RemoveDict { dict, symbol, dest } => {
+                Opcode::RemoveDict(dest, dict, symbol) => {
                     let dict_ptr = window[dict as usize].get(mem);
                     let symbol = window[symbol as usize].get(mem);
 
@@ -857,19 +857,11 @@ mod test {
                 )?;
                 bytecode.push(
                     view,
-                    Opcode::Add {
-                        dest: 0,
-                        reg1: 0,
-                        reg2: 1,
-                    },
+                    Opcode::Add(0,0,1)
                 )?;
                 bytecode.push(
                     view,
-                    Opcode::Add {
-                        dest: 0,
-                        reg1: 0,
-                        reg2: 1,
-                    },
+                    Opcode::Add(0,0,1)
                 )?;
                 bytecode.push(view, Opcode::Return { reg: 0 })?;
 

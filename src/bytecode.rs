@@ -90,16 +90,8 @@ pub enum Opcode {
         dest: Register,
         src: Register,
     },
-    Add {
-        dest: Register,
-        reg1: Register,
-        reg2: Register,
-    },
-    Subtract {
-        dest: Register,
-        left: Register,
-        right: Register,
-    },
+    Add(Register, Register, Register), // dest, left, right
+    Subtract(Register, Register, Register), // dest, left, right
     Multiply {
         dest: Register,
         reg1: Register,
@@ -134,16 +126,8 @@ pub enum Opcode {
     NewList {
         dest: Register,
     },
-    SetList {
-        list: Register,
-        index: Register,
-        src: Register,
-    },
-    GetList {
-        list: Register,
-        index: Register,
-        dest: Register,
-    },
+    GetList(Register, Register, Register), // dest, list, index 
+    SetList(Register, Register, Register), // list, index, src
     PushList {
         list: Register,
         src: Register,
@@ -155,21 +139,9 @@ pub enum Opcode {
     NewDict {
         dest: Register,
     },
-    SetDict {
-        dict: Register,
-        symbol: Register,
-        src: Register,
-    },
-    GetDict {
-        dict: Register,
-        symbol: Register,
-        dest: Register,
-    },
-    RemoveDict {
-        dict: Register,
-        symbol: Register,
-        dest: Register,
-    },
+    SetDict(Register, Register, Register), // dict, symbol, src
+    GetDict(Register, Register, Register), // dest, dict, symbol 
+    RemoveDict(Register, Register, Register), // dest, dict, symbol
 }
 
 pub type ArrayOpcode = Array<Opcode>;
