@@ -13,9 +13,9 @@ use crate::error::{err_eval, RuntimeError};
 use crate::function::{Closure, Function};
 use crate::list::List;
 use crate::memory::MutatorView;
-use crate::number::{NumberObject, TAG_NUM_MAX, TAG_NUM_MIN};
+use crate::number::{NumberObject, TAG_NUM_MAX, TAG_NUM_MIN, NumObjRelation};
 use crate::safe_ptr::{CellPtr, MutatorScope, ScopedPtr, TaggedCellPtr, TaggedScopedPtr};
-use crate::tagged_ptr::{TaggedPtr, Value};
+use crate::tagged_ptr::{FatPtr, TaggedPtr, Value};
 use crate::upvalue::{env_upvalue_lookup, Upvalue};
 
 pub const RETURN_REG: usize = 0;
@@ -171,18 +171,152 @@ impl Thread {
                     */
                 }
 
-                Opcode::IsIdentical { dest, test1, test2 } => {
-                    todo!()
-                    /*
-                    let test1_val = window[test1 as usize].get_ptr();
-                    let test2_val = window[test2 as usize].get_ptr();
+                Opcode::Equal(dest, left, right) => {
+                    let right_val = window[left as usize].get(mem);
+                    let left_val = window[right as usize].get(mem);
 
-                    if test1_val == test2_val {
-                        window[dest as usize].set(mem.lookup_sym("true"));
+                    // TODO: we should be comparing values instead of tagged pointers
+
+                    if left_val == right_val {
+                        window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                           // symbols
                     } else {
-                        window[dest as usize].set(mem.nil());
+                        window[dest as usize].set(mem.lookup_sym("false"));
                     }
-                    */
+                }
+
+                Opcode::NotEqual(dest, left, right) => {
+                    let right_val = window[left as usize].get(mem);
+                    let left_val = window[right as usize].get(mem);
+
+                    // TODO: we should be comparing values instead of tagged pointers
+
+                    if left_val != right_val {
+                        window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                           // symbols
+                    } else {
+                        window[dest as usize].set(mem.lookup_sym("false"));
+                    }
+                }
+
+                Opcode::Gt(dest, left, right) => {
+                    let left_val = window[left as usize].get(mem).value();
+                    let right_val = window[right as usize].get(mem).value();
+
+                    match (left_val, right_val) {
+                        (Value::NumberObject(left_obj), Value::NumberObject(right_obj)) => {
+                            if left_obj.cmp(&right_obj, mem)? == NumObjRelation::Greater {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            todo!("copare numberobjects with numbers")
+                        }
+                        (Value::Number(left_num), Value::Number(right_num)) => {
+                            if left_num > right_num {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                                   // symbols
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        _ => {
+                            unimplemented!("have yet to implement comparison for non number types")
+                        }
+                    }
+                }
+                Opcode::Gte(dest, left, right) => {
+                    let left_val = window[left as usize].get(mem).value();
+                    let right_val = window[right as usize].get(mem).value();
+
+                    match (left_val, right_val) {
+                        (Value::NumberObject(left_obj), Value::NumberObject(right_obj)) => {
+                            let cmp_result = left_obj.cmp(&right_obj, mem)?;
+                            if cmp_result == NumObjRelation::Greater || cmp_result == NumObjRelation::Equal {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            todo!("copare numberobjects with numbers")
+                        }
+                        (Value::Number(left_num), Value::Number(right_num)) => {
+                            if left_num >= right_num {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                                   // symbols
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        _ => {
+                            unimplemented!("have yet to implement comparison for non number types")
+                        }
+                    }
+                }
+                Opcode::Lt(dest, left, right) => {
+                    let left_val = window[left as usize].get(mem).value();
+                    let right_val = window[right as usize].get(mem).value();
+
+                    match (left_val, right_val) {
+                        (Value::NumberObject(left_obj), Value::NumberObject(right_obj)) => {
+                            let cmp_result = left_obj.cmp(&right_obj, mem)?;
+                            if cmp_result == NumObjRelation::Less {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            todo!("copare numberobjects with numbers")
+                        }
+                        (Value::Number(left_num), Value::Number(right_num)) => {
+                            if left_num < right_num {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                                   // symbols
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        _ => {
+                            unimplemented!("have yet to implement comparison for non number types")
+                        }
+                    }
+                }
+                Opcode::Lte(dest, left, right) => {
+                    let left_val = window[left as usize].get(mem).value();
+                    let right_val = window[right as usize].get(mem).value();
+
+                    match (left_val, right_val) {
+                        (Value::NumberObject(left_obj), Value::NumberObject(right_obj)) => {
+                            let cmp_result = left_obj.cmp(&right_obj, mem)?;
+                            if cmp_result == NumObjRelation::Less || cmp_result == NumObjRelation::Equal {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        (Value::Number(num), Value::NumberObject(num_obj))
+                        | (Value::NumberObject(num_obj), Value::Number(num)) => {
+                            todo!("copare numberobjects with numbers")
+                        }
+                        (Value::Number(left_num), Value::Number(right_num)) => {
+                            if left_num <= right_num {
+                                window[dest as usize].set(mem.lookup_sym("true")); // TODO: preinsert
+                                                                                   // symbols
+                            } else {
+                                window[dest as usize].set(mem.lookup_sym("false"));
+                            }
+                        }
+                        _ => {
+                            unimplemented!("have yet to implement comparison for non number types")
+                        }
+                    }
                 }
 
                 Opcode::Jump { offset } => {
@@ -212,7 +346,7 @@ impl Thread {
                 }
 
                 Opcode::LoadInteger { dest, integer } => {
-                    let tagged_ptr = TaggedPtr::literal_integer(integer);
+                    let tagged_ptr = TaggedPtr::number(integer as isize);
                     window[dest as usize].set_to_ptr(tagged_ptr);
                 }
 
@@ -224,7 +358,7 @@ impl Thread {
                 Opcode::LoadGlobal { dest, name } => {
                     let name_val = window[name as usize].get(mem);
 
-                    if let Value::Symbol(symbol) = *name_val {
+                    if let Value::Symbol(_sym) = *name_val {
                         let lookup_result = globals.lookup(mem, name_val);
 
                         match lookup_result {

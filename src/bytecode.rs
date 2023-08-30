@@ -43,11 +43,6 @@ pub enum Opcode {
         dest: Register,
         test: Register,
     },
-    IsIdentical {
-        dest: Register,
-        test1: Register,
-        test2: Register,
-    },
     Jump {
         offset: JumpOffset,
     },
@@ -142,6 +137,14 @@ pub enum Opcode {
     SetDict(Register, Register, Register), // dict, symbol, src
     GetDict(Register, Register, Register), // dest, dict, symbol 
     RemoveDict(Register, Register, Register), // dest, dict, symbol
+
+    // comparison operators: dest, left, right
+    Equal(Register, Register, Register),
+    NotEqual(Register, Register, Register),
+    Gt(Register, Register, Register),
+    Gte(Register, Register, Register),
+    Lt(Register, Register, Register),
+    Lte(Register, Register, Register),
 }
 
 pub type ArrayOpcode = Array<Opcode>;

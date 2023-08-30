@@ -9,8 +9,9 @@ use crate::error::RuntimeError;
 use crate::function::Function;
 use crate::memory::{Mutator, MutatorView, SymbolId};
 use crate::safe_ptr::{CellPtr, ScopedPtr, TaggedScopedPtr};
-use crate::tagged_ptr::Value;
+use crate::tagged_ptr::{TaggedPtr, Value};
 use crate::thread::Thread;
+use crate::number::{TAG_NUM_MAX, TAG_NUM_MIN};
 
 macro_rules! gen3 {
     ($fn_name:ident,
@@ -193,10 +194,18 @@ gen_to_func_gen3!(set_dict);
 gen_to_func_gen3!(get_dict);
 gen_to_func_gen3!(add);
 gen_to_func_gen3!(sub);
+gen_to_func_gen3!(equal);
+gen_to_func_gen3!(not_equal);
+gen_to_func_gen3!(gt);
+gen_to_func_gen3!(gte);
+gen_to_func_gen3!(lt);
+gen_to_func_gen3!(lte);
+
 gen_to_func_gen2!(push_list);
 gen_to_func_gen2!(pop_list);
 gen_to_func_gen2!(copy);
 gen_to_func_gen2!(call);
+
 gen_to_func_gen1!(new_list);
 gen_to_func_gen1!(new_dict);
 gen_to_func_gen1!(gen_return);
@@ -341,6 +350,12 @@ gen3!(get_list, GetList, true);
 gen3!(remove_dict, RemoveDict, true);
 gen3!(add, Add, true);
 gen3!(sub, Subtract, true);
+gen3!(equal, Equal, true);
+gen3!(not_equal, NotEqual, true);
+gen3!(gt, Gt, true);
+gen3!(gte, Gte, true);
+gen3!(lt, Lt, true);
+gen3!(lte, Lte, true);
 
 // non store instructions
 gen3!(set_dict, SetDict, false);
@@ -535,15 +550,18 @@ impl<'guard> FunctionGenerator<'guard> {
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
         let dest = self.bind(var_id)?;
 
-        // if num < TAG_NUM_MIN || TAG_NUM_MAX < num {
-        //  create a number object
-        //  load the number into the literals
-        //  load the literal id
-        // }
-        if num < (i16::MIN as isize) || (i16::MAX as isize) < num {
-            // push a tagged num literal
-            // load the literal
-            todo!("load num as")
+        if num < TAG_NUM_MIN || TAG_NUM_MAX < num {
+            //  create a number object
+            //  load the number into the literals
+            //  load the literal id
+            todo!("create num obj literal")
+        } else if num < (i16::MIN as isize) || (i16::MAX as isize) < num {
+            let num_ptr = TaggedPtr::number(num as isize);
+            let literal_id = self.push_lit(TaggedScopedPtr::new(self.mem, num_ptr))?;
+            self.push_code(Opcode::LoadLiteral {
+                dest,
+                literal_id,
+            })
         } else {
             self.push_code(Opcode::LoadInteger {
                 dest,
@@ -950,43 +968,5 @@ impl<'guard> FunctionGenerator<'guard> {
             self.function.set_overflow_capacity(overflow_capacity);
         }
         self.mem.alloc(self.function)
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::vm::SVM;
-
-    struct OverflowTestCompiler {}
-
-    impl Compiler for OverflowTestCompiler {
-        fn compile<'guard>(self, gen: &mut Generator) -> Result<(), RuntimeError> {
-            let result = gen.decl_var("result".to_string());
-            let one = gen.get_temp();
-            gen.load_num(one, 1)?;
-            gen.load_num(result, 1)?;
-            // only 256 variables can be bound at once
-            // this should cause some evict instructions to be generated
-            // and for some variables to be evicted
-            for _ in 0..300 {
-                let temp = gen.get_temp();
-                gen.copy(temp, one)?;
-                gen.add(result, result, temp)?;
-            }
-
-            gen.gen_return(result)?;
-
-            Ok(())
-        }
-    }
-
-    #[test]
-    fn test_overflow() {
-        let mut vm = SVM::new();
-        let test_compiler = OverflowTestCompiler {};
-
-        vm.compile(test_compiler).expect("compiles");
-        vm.execute().expect("no errors");
     }
 }

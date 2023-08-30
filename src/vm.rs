@@ -91,6 +91,8 @@ mod test {
         let output_str = String::from_utf8(data).unwrap();
         fs::remove_file(file_name).unwrap();
 
+        println!("{}", output_str);
+
         assert!(output_str == expected_output);
     }
 
@@ -299,5 +301,56 @@ mod test {
             Ok(())
         }
         vm_test_helper(case, "vm_dict.test", "555\n");
+    }
+
+    #[test]
+    fn test_overflow() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let result = gen.decl_var("result".to_string());
+            let one = gen.get_temp();
+            gen.load_num(one, 1)?;
+            gen.load_num(result, 0)?;
+
+            // only 256 variables can be bound at once
+            // this should cause some evict instructions to be generated
+            // and for some variables to be evicted
+            for _ in 0..400 {
+                let temp = gen.get_temp();
+                gen.copy(temp, one)?;
+                gen.add(result, result, temp)?;
+            }
+
+            gen.print(result)?;
+
+            gen.gen_return(result)?;
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_overflow.test", "400\n");
+    }
+
+    #[test]
+    fn test_equality() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let big = gen.decl_var("big".to_string());
+            let small = gen.decl_var("small".to_string());
+            let result = gen.get_temp();
+
+            gen.load_num(small, 1)?;
+            gen.load_num(big, 99999)?;
+            gen.equal(result, big, small)?;
+            gen.print(result)?;
+            gen.not_equal(result, big, small)?;
+            gen.print(result)?;
+            gen.gt(result, big, small)?;
+            gen.print(result)?;
+            gen.lt(result, big, small)?;
+            gen.print(result)?;
+
+            gen.gen_return(result)?;
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_equality.test", "false\ntrue\ntrue\nfalse\n");
     }
 }
