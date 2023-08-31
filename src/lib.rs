@@ -6,6 +6,7 @@ mod dict;
 mod error;
 mod function;
 mod generator;
+mod function_generator;
 mod hashable;
 mod header;
 mod list;
