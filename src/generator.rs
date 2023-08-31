@@ -513,26 +513,31 @@ impl<'guard> FunctionGenerator<'guard> {
         };
 
         let call_site = if required_free_regs > (free_regs as usize) {
-            (256 - required_free_regs) as u8
+            todo!("we need to evict some registers")
         } else {
             (256 - (free_regs as usize)) as u8
         };
 
-        let mut next_bind = call_site;
+        let mut next_arg = call_site;
 
         for arg in args.iter() {
-            self.bind_to(next_bind, *arg)?;
-            self.activate(next_bind);
-            next_bind += 1;
+            if let Some(src) = self.vars.get(&arg).unwrap().bind_index {
+                self.push_code(Opcode::CopyRegister {
+                    dest: next_arg,
+                    src: src as u8,
+                })?;
+            }
+            next_arg += 1;
         }
 
-        self.deactivate_all();
 
         let function = self.bind(function)?;
         let offset = self.push_code(Opcode::Call {
             function,
             dest: call_site,
         })?;
+
+        self.free(dest);
 
         self.bind_to(call_site, dest)?;
 

@@ -374,23 +374,18 @@ mod test {
 
             gen.load_num(buzz, 9)?;
             gen.load_num(qux, 1)?;
-
             gen.call(my_func, result, vec![buzz, qux])?;
-
             gen.print(result)?;
-
             gen.load_num(buzz, 420)?;
             gen.load_num(qux, 80)?;
-
             gen.call(my_func, result, vec![qux, buzz])?;
-
             gen.print(result)?;
-
+            gen.call(my_func, result, vec![result, result])?;
+            gen.print(result)?;
             gen.gen_return(result)?;
-
 
             Ok(())
         }
-        vm_test_helper(case, "vm_call_with_arguments.test", "10\n10\n500\n500\n");
+        vm_test_helper(case, "vm_call_with_arguments.test", "10\n10\n500\n500\n1000\n1000\n");
     }
 }
