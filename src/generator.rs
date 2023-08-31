@@ -204,7 +204,6 @@ gen_to_func_gen3!(lte);
 gen_to_func_gen2!(push_list);
 gen_to_func_gen2!(pop_list);
 gen_to_func_gen2!(copy);
-gen_to_func_gen2!(call);
 
 gen_to_func_gen1!(new_list);
 gen_to_func_gen1!(new_dict);
@@ -255,6 +254,15 @@ impl<'guard> Generator<'guard> {
         scoped_gen!(self, jump_if_not_true, test, offset)
     }
 
+    pub fn call(
+        &mut self,
+        function: VarId,
+        dest: VarId,
+        args: Vec<VarId>
+    ) -> Result<ArraySize, RuntimeError> {
+        scoped_gen!(self, call, function, dest, args)
+    }
+
     pub fn load_num(&mut self, var_id: VarId, num: isize) -> Result<ArraySize, RuntimeError> {
         let top_idx = self.function_stack.len() - 1;
         self.function_stack[top_idx].load_num(var_id, num)
@@ -299,8 +307,13 @@ impl<'guard> Generator<'guard> {
         if let Value::Symbol(sym_id) = self.mem.lookup_sym(&name).value() {
             let var_id = VarId::Symbol(sym_id);
 
-            for (frame_offset, func_gen) in self.function_stack.iter_mut().rev().enumerate() {
+            for (frame_offset, func_gen) in self.function_stack.iter_mut().enumerate().rev() {
                 if func_gen.is_declared(var_id) {
+                    if frame_offset == top_idx {
+                        // declared as a local
+                        return Ok(var_id);
+                    }
+
                     let reg_offset = func_gen.bind(var_id)?;
 
                     self.function_stack[top_idx].close_var(
@@ -323,15 +336,21 @@ impl<'guard> Generator<'guard> {
         self.function_stack.len() == 1
     }
 
-    // pushes a function onto the stack, generated code always
-    // targets the top function
-    pub fn push_func(&mut self, _args: Vec<String>) -> Result<(), RuntimeError> {
-        // TODO use the args!!!
-
-        self.function_stack.push(FunctionGenerator::new(
+    pub fn push_func(&mut self, args: Vec<String>) -> Result<(), RuntimeError> {
+        let mut func_gen = FunctionGenerator::new(
             Function::new_default(self.mem)?,
             self.mem,
-        ));
+        );
+
+        for arg in args {
+            if let Value::Symbol(sym_id) = self.mem.lookup_sym(&arg).value() {
+                let var_id = VarId::Symbol(sym_id);
+                func_gen.decl_var(VarKind::Local, var_id);
+                func_gen.bind(var_id)?;
+            }
+        }
+
+        self.function_stack.push(func_gen);
 
         Ok(())
     }
@@ -468,45 +487,54 @@ impl<'guard> FunctionGenerator<'guard> {
         Ok(offset)
     }
 
-    pub fn call(&mut self, function: VarId, dest: VarId) -> Result<ArraySize, RuntimeError> {
+    pub fn call(&mut self, function: VarId, dest: VarId, args: Vec<VarId>) -> Result<ArraySize, RuntimeError> {
+        if 253 < args.len() {
+            unimplemented!("functions with more than 253 arguments are not supported")
+        }
+
+        self.free(dest);
+
+        let func_reg = self.bind(function)?;
+        self.activate(func_reg);
+
+        for arg in args.iter() {
+            let reg = self.bind(*arg)?;
+            self.activate(reg);
+        }
+
+        self.deactivate_all();
+
+        let free_regs = self.compact();
+
+        let required_free_regs = if args.len() == 0 {
+            args.len()
+        } else {
+            1
+        };
+
+        let call_site = if required_free_regs > (free_regs as usize) {
+            (256 - required_free_regs) as u8
+        } else {
+            (256 - (free_regs as usize)) as u8
+        };
+
+        let mut next_bind = call_site;
+
+        for arg in args.iter() {
+            self.bind_to(next_bind, *arg)?;
+            self.activate(next_bind);
+            next_bind += 1;
+        }
+
+        self.deactivate_all();
+
         let function = self.bind(function)?;
-        if function == 255 {
-            todo!("functions cannot be called from the last register!")
-        }
-        self.activate(function);
-
-        let mut call_site: Register = 0;
-        for (reg, binding) in self.bindings.iter().enumerate() {
-            if 255 < reg {
-                break;
-            }
-
-            match binding {
-                Binding::Freed => {}
-                Binding::Used(_) | Binding::Active(_) => {
-                    if reg == 255 {
-                        call_site = 255 as Register;
-                    } else {
-                        call_site = (reg + 1) as Register;
-                    }
-                }
-            }
-        }
-
-        if (call_site as usize) == self.bindings.len() {
-            self.bindings.push(Binding::Freed);
-        }
-
-        if (call_site == 255) && (self.bindings[255] != Binding::Freed) {
-            self.evict(255)?;
-        }
-
-        self.bind_to(call_site, dest)?;
         let offset = self.push_code(Opcode::Call {
             function,
             dest: call_site,
         })?;
-        self.deactivate(function);
+
+        self.bind_to(call_site, dest)?;
 
         Ok(offset)
     }
@@ -610,6 +638,30 @@ impl<'guard> FunctionGenerator<'guard> {
     // ===================== PRIVATE FUNCS ====================================
     // ===================== PRIVATE FUNCS ====================================
 
+    fn compact(&mut self) -> u8 {
+        let mut free_regs: u8 = 0;
+        for index in 0..256 {
+            if index == self.bindings.len() {
+                if self.bindings.len() < 256 {
+                    free_regs += (255 - (self.bindings.len() as u8)) + 1
+                }
+
+                break;
+            }
+            match self.bindings[index] {
+                Binding::Freed => free_regs += 1,
+                Binding::Used(_) => {
+                    if 0 < free_regs {
+                        self.evict(index as u8).unwrap();
+                    }
+                }
+                Binding::Active(_) => unreachable!("no registers should be active at this point")
+            }
+        }
+
+        free_regs
+    }
+
     fn activate_and_bind3(
         &mut self,
         var1: VarId,
@@ -706,6 +758,13 @@ impl<'guard> FunctionGenerator<'guard> {
         }
     }
 
+    fn deactivate_all(&mut self) {
+        for i in 0..256 {
+            if i == self.bindings.len() { break }
+            self.deactivate(i as u8)
+        }
+    }
+
     fn deactivate(&mut self, reg: Register) {
         match self.bindings[reg as usize] {
             Binding::Active(var_id) => {
@@ -761,6 +820,30 @@ impl<'guard> FunctionGenerator<'guard> {
     }
 
     fn bind_to(&mut self, reg: Register, var_id: VarId) -> Result<(), RuntimeError> {
+        // TODO load if nonlocal
+        let mut var = self.vars.get(&var_id).unwrap().clone();
+        if let Some(bind_index) = var.bind_index {
+            self.bindings[bind_index as usize] = Binding::Freed;
+
+            if bind_index <= 255 {
+                self.push_code(Opcode::CopyRegister {
+                    dest: reg,
+                    src: bind_index as u8,
+                })?;
+            } else {
+                self.push_code(Opcode::LoadOverflow {
+                    dest: reg,
+                    overflow_id: bind_index - 256
+                })?;
+            }
+        }
+
+        if reg as usize >= self.bindings.len() {
+            for _ in 0..=(reg as usize - self.bindings.len()) {
+                self.bindings.push(Binding::Freed);
+            }
+        }
+
         match self.bindings[reg as usize] {
             Binding::Freed => {}
             Binding::Used(_) => self.evict(reg)?,
@@ -770,7 +853,6 @@ impl<'guard> FunctionGenerator<'guard> {
         }
 
         self.bindings[reg as usize] = Binding::Used(var_id);
-        let mut var = self.vars.get(&var_id).unwrap().clone();
         var.bind_index = Some(reg as u16);
         self.vars.insert(var_id, var);
 
@@ -889,7 +971,8 @@ impl<'guard> FunctionGenerator<'guard> {
         if let Some(free_reg) = self.find_free_reg() {
             var.bind_index = Some(free_reg as u16);
             self.vars.insert(var_id, var);
-            self.bindings.push(Binding::Used(var_id));
+            self.bindings[free_reg as usize] = Binding::Used(var_id);
+            self.bindings[evict_reg as usize] = Binding::Freed;
             self.push_code(Opcode::CopyRegister {
                 dest: free_reg,
                 src,

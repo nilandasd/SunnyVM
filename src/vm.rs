@@ -159,13 +159,13 @@ mod test {
 
             // do some juggling
 
-            gen.call(baz, temp)?;
+            gen.call(baz, temp, vec![])?;
             gen.print(temp)?;
             gen.copy(temp, baz)?;
-            gen.call(temp, baz)?;
+            gen.call(temp, baz, vec![])?;
             gen.print(baz)?;
             gen.copy(baz, temp)?;
-            gen.call(baz, temp)?;
+            gen.call(baz, temp, vec![])?;
             gen.print(temp)?;
 
             gen.gen_return(temp)?;
@@ -202,7 +202,7 @@ mod test {
             gen.pop_func(temp3)?;
             // FUNC DEF ==============
 
-            gen.call(temp3, foo)?;
+            gen.call(temp3, foo, vec![])?;
             gen.add(temp, temp, foo)?;
             gen.gen_return(temp)?;
 
@@ -212,13 +212,13 @@ mod test {
 
             // do some juggling
 
-            gen.call(baz, temp)?;
+            gen.call(baz, temp, vec![])?;
             gen.print(temp)?;
             gen.copy(temp, baz)?;
-            gen.call(temp, baz)?;
+            gen.call(temp, baz, vec![])?;
             gen.print(baz)?;
             gen.copy(baz, temp)?;
-            gen.call(baz, temp)?;
+            gen.call(baz, temp, vec![])?;
             gen.print(temp)?;
 
             gen.gen_return(temp)?;
@@ -352,5 +352,45 @@ mod test {
             Ok(())
         }
         vm_test_helper(case, "vm_equality.test", "false\ntrue\ntrue\nfalse\n");
+    }
+
+    #[test]
+    fn test_call_with_arguments() {
+        fn case(gen: &mut Generator) -> Result<(), RuntimeError> {
+            let my_func = gen.decl_var("my_func".to_string());
+
+            gen.push_func(vec!["foo".to_string(), "bar".to_string()])?;
+            let foo = gen.find_and_close_var("foo".to_string())?;
+            let bar = gen.find_and_close_var("bar".to_string())?;
+            let result = gen.get_temp();
+            gen.add(result, foo, bar)?;
+            gen.print(result)?;
+            gen.gen_return(result)?;
+            gen.pop_func(my_func)?;
+
+            let buzz = gen.decl_var("buzz".to_string());
+            let qux = gen.decl_var("qux".to_string());
+            let result = gen.get_temp();
+
+            gen.load_num(buzz, 9)?;
+            gen.load_num(qux, 1)?;
+
+            gen.call(my_func, result, vec![buzz, qux])?;
+
+            gen.print(result)?;
+
+            gen.load_num(buzz, 420)?;
+            gen.load_num(qux, 80)?;
+
+            gen.call(my_func, result, vec![qux, buzz])?;
+
+            gen.print(result)?;
+
+            gen.gen_return(result)?;
+
+
+            Ok(())
+        }
+        vm_test_helper(case, "vm_call_with_arguments.test", "10\n10\n500\n500\n");
     }
 }
